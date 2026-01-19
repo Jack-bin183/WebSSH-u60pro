@@ -5,7 +5,7 @@
       <div class="title-section">
         <h1 class="title">
           <div class="uptime-value" style="font-size: 20px">
-            运行中 {{ formatUptime(deviceInfo.device_uptime as any) }}
+            已运行{{ formatUptime(deviceInfo.device_uptime as any) }}
           </div>
         </h1>
         <div class="status-indicator">
@@ -16,6 +16,11 @@
 
       <div class="controls">
         <div style="display: flex; gap: 10px">
+
+          <div style="display: flex; position: relative">
+            <span class="uptime-label">{{ netWorkProvider }}</span>
+          </div>
+
           <div style="display: flex; position: relative">
             <div class="signal-bars">
               <div
@@ -54,13 +59,22 @@
 
         <div class="auto-refresh-controls">
           <button class="btn btn-primary" @click="refresh">刷新</button>
-          <select
+          快<select
             v-model="refreshInterval"
             @change="updateRefreshInterval"
             :disabled="!autoRefresh">
             <option value="1000">1秒</option>
             <option value="2000">2秒</option>
             <option value="5000">5秒</option>
+            <option value="10000">10秒</option>
+          </select>
+          慢<select
+              v-model="refreshInterval2"
+              @change="updateRefreshInterval"
+              :disabled="!autoRefresh">
+            <option value="5000">5秒</option>
+            <option value="1000">1秒</option>
+            <option value="2000">2秒</option>
             <option value="10000">10秒</option>
           </select>
           <label class="checkbox-label">
@@ -83,11 +97,28 @@
             @click="oneClickDebugClose"
             >关闭ADB</button
           >
+          <!--
           <button
             class="btn btn-primary"
             @click="smsForwardHandler"
             >短信转发</button
           >
+           -->
+        </div>
+        <div class="auto-refresh-controls">
+          WiFi:<span :class="wifiInfo.highPerformance ? 'hp' : 'psm'">{{ wifiModeText }}</span>
+          <button style="margin-left: 1px;" class="btn" :class="wifiInfo.highPerformance ? 'btn-primary' : 'btn-primary'"
+                  @click="psmSetHandler(!wifiInfo.highPerformance)" >
+            {{ wifiButtonText }}
+          </button>
+        </div>
+        <div class="auto-refresh-controls">
+          2.4G-WIFI:{{wifiInfo.wifiStatus24?'开':'关'}}
+          <button style="margin-left: 1px;" class="btn" :class="wifiInfo.wifiStatus24 ? 'btn-primary' : 'btn-primary'"
+                  @click="wifiStateSetHandler('wlan0',!wifiInfo.wifiStatus24)">{{wifiInfo.wifiStatus24?'关闭':'开启'}}</button>
+          5G-WIFI:{{wifiInfo.wifiStatus5?'开':'关'}}
+          <button style="margin-left: 1px;" class="btn" :class="wifiInfo.wifiStatus5 ? 'btn-primary' : 'btn-primary'"
+                  @click="wifiStateSetHandler('wlan2',!wifiInfo.wifiStatus5)">{{wifiInfo.wifiStatus5?'关闭':'开启'}}</button>
         </div>
       </div>
     </div>
@@ -108,7 +139,7 @@
 
     <!-- 数据展示 -->
     <div v-else-if="dataReady" class="content">
-      
+
       <!-- NR 5G 载波 -->
       <div class="card">
         <div class="card-header">
@@ -118,7 +149,7 @@
           <span v-if="networkType != '5G'" class="tag warning">未激活</span>
           <span v-else class="tag success">
             {{ networkType }}{{ is5GA ? 'A' : '' }}
-            
+
             ({{ d.nr5g_action_band?.toUpperCase() ?? '-' }}{{
                 formatNrca(d.nrca,'',0,3) != '-' ? ', N' + formatNrca(d.nrca,'',0,3) : '' }}{{
                 formatNrca(d.nrca,'',1,3) != '-' ? ', N' + formatNrca(d.nrca,'',1,3) : '' }})
@@ -170,6 +201,17 @@
                 <td>{{ formatNrca(d.nrca,'',1,8) }}</td>
                 <td>{{ formatNrca(d.nrca,'',1,9) }}</td>
                 <td class="dbmstyle">{{ formatNrca(d.nrca,'',1,10) }}</td>
+              </tr>
+              <tr>
+                <td>SCC2</td>
+                <td>{{ formatNrca(d.nrca,'',2,1) }}</td>
+                <td>{{ formatNrca(d.nrca,'N',2,3) }}</td>
+                <td>{{ formatNrca(d.nrca,'',2,4) }}</td>
+                <td>{{ formatNrca(d.nrca,'',2,5) }}</td>
+                <td class="dbmstyle">{{ formatNrca(d.nrca,'',2,7) }}</td>
+                <td>{{ formatNrca(d.nrca,'',2,8) }}</td>
+                <td>{{ formatNrca(d.nrca,'',2,9) }}</td>
+                <td class="dbmstyle">{{ formatNrca(d.nrca,'',2,10) }}</td>
               </tr>
             </table>
           </div>
@@ -249,11 +291,22 @@
                 <td>{{ formatNrca(d.ltecasig,'',2,2) }}</td>
                 <td class="dbmstyle">{{ formatNrca(d.ltecasig,'',2,3) }}</td>
               </tr>
+              <tr>
+                <td>SCC3</td>
+                <td>{{ formatNrca(d.lteca,'',4,0) }}</td>
+                <td>{{ formatNrca(d.lteca,'B',4,1) }}</td>
+                <td>{{ formatNrca(d.lteca,'',4,3) }}</td>
+                <td>{{ formatNrca(d.lteca,'',4,4) }}</td>
+                <td class="dbmstyle">{{ formatNrca(d.ltecasig,'',4,0) }}</td>
+                <td>{{ formatNrca(d.ltecasig,'',4,1) }}</td>
+                <td>{{ formatNrca(d.ltecasig,'',4,2) }}</td>
+                <td class="dbmstyle">{{ formatNrca(d.ltecasig,'',4,3) }}</td>
+              </tr>
             </table>
           </div>
         </div>
       </div>
-      
+
       <!-- NR 5G信号卡片 -->
       <div class="card">
         <div class="card-header">
@@ -305,7 +358,7 @@
               <span class="label">PCI</span>
               <span class="value">{{ d.nr5g_pci ?? '-' }}</span>
             </div>
-            
+
             <div class="signal-item" width="100%">
               <span class="label">Cell ID</span>
               <span class="value">{{ d.nr5g_cell_id ?? '-' }}</span>
@@ -325,7 +378,7 @@
         </div>
         <div class="card-content">
           <div class="signal-grid">
-            
+
             <div class="signal-item">
               <span class="label">RSRP</span>
               <div class="progress-bar">
@@ -373,7 +426,7 @@
           </div>
         </div>
       </div>
-      
+
       <!-- 设备信息卡片 -->
       <div class="card device-info-card">
         <div class="card-header">
@@ -518,7 +571,7 @@
           </div>
         </div>
       </div>
-      
+
       <!-- 网络信息卡片 -->
       <div class="card">
         <div class="card-header">
@@ -848,10 +901,16 @@ import axios from 'axios';
 import { ElMessage, ElNotification } from 'element-plus';
 import { computed, onMounted, onUnmounted, ref } from 'vue';
 
-interface UbusResponse<T = any> {
-  code: number;
-  msg: string;
-  result?: T;
+// interface UbusResponse<T = any> {
+//   code: number;
+//   msg: string;
+//   result?: T;
+// }
+
+interface ZteRpcResponse {
+  jsonrpc: string
+  id: number
+  result: [number, any]
 }
 
 interface NetInfoResult {
@@ -972,6 +1031,7 @@ interface SimInfo {
 interface SimInfo2 {
   sim_iccid: string;
   sim_imsi: string;
+  Operator: string;
 }
 
 interface WwanInfo {
@@ -1000,6 +1060,20 @@ interface LanUserList {
   guest_num_5g: number;
   guest_num_6g: number;
 }
+
+// WiFi状态
+interface WifiInfo {
+  wlan0: string
+  wlan1: string
+  wlan2: string
+  wlan3: string
+  wifiStatus24: boolean
+  wifiStatus5: boolean
+  highPerformance: boolean
+}
+const wifiInfo = ref<WifiInfo>({} as WifiInfo);
+const wifiModeText = computed(() => wifiInfo.value.highPerformance ? '高性能模式' : '省电模式')
+const wifiButtonText = computed(() => wifiInfo.value.highPerformance ? '切换为省电' : '切换为高性能')
 
 // 响应式数据
 const loading = ref(false);
@@ -1060,97 +1134,315 @@ const is5GA = computed(() => {
 // 自动刷新控制
 const autoRefresh = ref(true);
 const refreshInterval = ref(1000);
+const refreshInterval2 = ref(5000);
 let refreshTimer: number | null = null;
+let refreshTimer2: number | null = null;
 
 // 请求体定义
+// const netInfoRequest = {
+//   id: 1,
+//   service: 'zte_nwinfo_api',
+//   method: 'nwinfo_get_netinfo',
+//   params: {},
+// };
+
+// const lanRequest = {
+//   id: 2,
+//   service: 'network.interface.lan',
+//   method: 'status',
+//   params: {},
+// };
+//
+// const wanRequest = {
+//   id: 3,
+//   service: 'network.interface.zte_wan',
+//   method: 'status',
+//   params: {},
+// };
+//
+// const wan6Request = {
+//   id: 4,
+//   service: 'network.interface.zte_wan6',
+//   method: 'status',
+//   params: {},
+// };
+//
+// const trafficRequest = {
+//   id: 5,
+//   service: 'zwrt_data',
+//   method: 'get_wwandst',
+//   params: { source_module: 'web', cid: 1, type: 4 },
+// };
+//
+// const simInfoRequest = {
+//   id: 6,
+//   service: 'uci',
+//   method: 'get',
+//   params: {
+//     config: 'zwrt_zte_mdm',
+//     section: 'device_info',
+//   },
+// };
+//
+// const simInfo2Request = {
+//   id: 7,
+//   service: 'zwrt_zte_mdm.api',
+//   method: 'get_sim_info',
+//   params: {},
+// };
+//
+// const deviceInfoRequest = {
+//   id: 8,
+//   service: 'zwrt_mc.device.manager',
+//   method: 'get_device_info',
+//   params: {},
+// };
+//
+// const cpuTempRequest = {
+//   id: 9,
+//   service: 'zwrt_bsp.thermal',
+//   method: 'get_cpu_temp',
+//   params: {},
+// };
+//
+// const wwanRequest = {
+//   id: 10,
+//   service: 'zwrt_data',
+//   method: 'get_wwaniface',
+//   params: {
+//     source_module: 'web',
+//     cid: 1,
+//     connect_status: '',
+//   },
+// };
+//
+// const lanUserListRequest = {
+//   id: 11,
+//   service: 'zwrt_router.api',
+//   method: 'router_get_user_list_num',
+//   params: {},
+// };
+//
+// const openAdbRequest = {
+//   id: 12,
+//   service: 'zwrt_bsp.usb',
+//   method: 'set',
+//   params: {
+//     mode: 'debug',
+//   },
+// };
+//
+// const closeAdbRequest = {
+//   id: 13,
+//   service: 'zwrt_bsp.usb',
+//   method: 'set',
+//   params: {
+//     mode: 'user',
+//   },
+// };
+
+// session 固定值（未登录）
+const SESSION_ID = '00000000000000000000000000000000'
+
+// 1.网络信息
 const netInfoRequest = {
-  service: 'zte_nwinfo_api',
-  method: 'nwinfo_get_netinfo',
-  params: {},
+  jsonrpc: '2.0',
+  id: 1,
+  method: 'call',
+  params: [
+    SESSION_ID,
+    'zte_nwinfo_api',
+    'nwinfo_get_netinfo',
+    {},
+  ]
 };
-
+// 2.LAN 状态
 const lanRequest = {
-  service: 'network.interface.lan',
-  method: 'status',
-  params: {},
-};
-
+  jsonrpc: '2.0',
+  id: 2,
+  method: 'call',
+  params: [
+    SESSION_ID,
+    'network.interface.lan',
+    'status',
+    {},
+  ],
+}
+// 3.WAN IPv4
 const wanRequest = {
-  service: 'network.interface.zte_wan',
-  method: 'status',
-  params: {},
-};
-
+  jsonrpc: '2.0',
+  id: 3,
+  method: 'call',
+  params: [
+    SESSION_ID,
+    'network.interface.zte_wan',
+    'status',
+    {},
+  ],
+}
+// 4.WAN IPv6
 const wan6Request = {
-  service: 'network.interface.zte_wan6',
-  method: 'status',
-  params: {},
-};
-
+  jsonrpc: '2.0',
+  id: 4,
+  method: 'call',
+  params: [
+    SESSION_ID,
+    'network.interface.zte_wan6',
+    'status',
+    {},
+  ],
+}
+// 5.流量统计
 const trafficRequest = {
-  service: 'zwrt_data',
-  method: 'get_wwandst',
-  params: { source_module: 'web', cid: 1, type: 4 },
-};
-
-const simInfoRequest = {
-  service: 'uci',
-  method: 'get',
-  params: {
-    config: 'zwrt_zte_mdm',
-    section: 'device_info',
-  },
-};
-
-const simInfo2Request = {
-  service: 'zwrt_zte_mdm.api',
-  method: 'get_sim_info',
-  params: {},
-};
-
+  jsonrpc: '2.0',
+  id: 5,
+  method: 'call',
+  params: [
+    SESSION_ID,
+    'zwrt_data',
+    'get_wwandst',
+    { source_module: 'web', cid: 1, type: 4 },
+  ],
+}
+// 6.设备信息
 const deviceInfoRequest = {
-  service: 'zwrt_mc.device.manager',
-  method: 'get_device_info',
-  params: {},
-};
-
+  jsonrpc: '2.0',
+  id: 6,
+  method: 'call',
+  params: [
+    SESSION_ID,
+    'zwrt_mc.device.manager',
+    'get_device_info',
+    {},
+  ],
+}
+// 7.CPU 温度
 const cpuTempRequest = {
-  service: 'zwrt_bsp.thermal',
-  method: 'get_cpu_temp',
-  params: {},
-};
-
+  jsonrpc: '2.0',
+  id: 7,
+  method: 'call',
+  params: [
+    SESSION_ID,
+    'zwrt_bsp.thermal',
+    'get_cpu_temp',
+    {},
+  ],
+}
+// 8.SIM 信息（uci）
+const simInfoRequest = {
+  jsonrpc: '2.0',
+  id: 8,
+  method: 'call',
+  params: [
+    SESSION_ID,
+    'uci',
+    'get',
+    {
+      config: 'zwrt_zte_mdm',
+      section: 'device_info',
+    },
+  ],
+}
+// 9.SIM 信息 2
+const simInfo2Request = {
+  jsonrpc: '2.0',
+  id: 9,
+  method: 'call',
+  params: [
+    SESSION_ID,
+    'zwrt_zte_mdm.api',
+    'get_sim_info',
+    {},
+  ],
+}
+// 10.WWAN 接口信息
 const wwanRequest = {
-  service: 'zwrt_data',
-  method: 'get_wwaniface',
-  params: {
-    source_module: 'web',
-    cid: 1,
-    connect_status: '',
-  },
-};
-
+  jsonrpc: '2.0',
+  id: 10,
+  method: 'call',
+  params: [
+    SESSION_ID,
+    'zwrt_data',
+    'get_wwaniface',
+    {
+      source_module: 'web',
+      cid: 1,
+      connect_status: '',
+    },
+  ],
+}
+// 11.LAN 用户数
 const lanUserListRequest = {
-  service: 'zwrt_router.api',
-  method: 'router_get_user_list_num',
-  params: {},
-};
+  jsonrpc: '2.0',
+  id: 11,
+  method: 'call',
+  params: [
+    SESSION_ID,
+    'zwrt_router.api',
+    'router_get_user_list_num',
+    {},
+  ],
+}
 
+// 1.网络信息 => netInfoRequest
+// 2.LAN 状态 => lanRequest
+// 3.WAN IPv4 => wanRequest
+// 4.WAN IPv6 => wan6Request
+// 5.流量统计 => trafficRequest
+// 6.设备信息 => deviceInfoRequest
+// 7.CPU 温度 => cpuTempRequest
+// 8.SIM 信息（uci） => simInfoRequest
+// 9.SIM 信息 2 => simInfo2Request
+// 10.WWAN 接口信息 => wwanRequest
+// 11.LAN 用户数 => lanUserListRequest
+const batchRequests = [
+  netInfoRequest,
+  lanRequest,
+  wanRequest,
+  wan6Request,
+  trafficRequest,
+  // deviceInfoRequest,
+  cpuTempRequest,
+  simInfoRequest,
+  simInfo2Request,
+  // wwanRequest,
+  // lanUserListRequest,
+]
+const batchRequests2 = [
+  deviceInfoRequest,
+  wwanRequest,
+  lanUserListRequest
+]
+
+// 打开 ADB
 const openAdbRequest = {
-  service: 'zwrt_bsp.usb',
-  method: 'set',
-  params: {
-    mode: 'debug',
-  },
-};
+  jsonrpc: '2.0',
+  id: 12,
+  method: 'call',
+  params: [
+    SESSION_ID,
+    'zwrt_bsp.usb',
+    'set',
+    {
+      mode: 'debug',
+    },
+  ],
+}
 
+// 关闭 ADB
 const closeAdbRequest = {
-  service: 'zwrt_bsp.usb',
-  method: 'set',
-  params: {
-    mode: 'user',
-  },
-};
+  jsonrpc: '2.0',
+  id: 13,
+  method: 'call',
+  params: [
+    SESSION_ID,
+    'zwrt_bsp.usb',
+    'set',
+    {
+      mode: 'user',
+    },
+  ],
+}
 
 // 计算属性
 const dataReady = computed(() => !!data.value);
@@ -1182,11 +1474,19 @@ function formatSnr(v: unknown): string {
 }
 
 function formatUptime(seconds?: number): string {
-  if (!seconds) return '-';
-  const hours = Math.floor(seconds / 3600);
+  if (!seconds || seconds <= 0) return '-';
+
+  const days = Math.floor(seconds / 86400);
+  const hours = Math.floor((seconds % 86400) / 3600);
   const minutes = Math.floor((seconds % 3600) / 60);
-  const secs = seconds % 60;
-  return `${hours}:${minutes}:${secs}`;
+  const secs = Math.floor(seconds % 60);
+
+  const parts: string[] = [];
+  if (days) parts.push(`${days}天`);
+  parts.push(`${hours}小时`);
+  parts.push(`${minutes}分`);
+  // if (secs || parts.length === 0) parts.push(`${secs}秒`);
+  return parts.join('');
 }
 
 function formatSpeed(bytesPerSecond: number): string {
@@ -1314,71 +1614,162 @@ function formatNrca(nrca: string, pre: string, type: number, index: number): str
   return pre + String(num);
 }
 
+// 获取网络运营商
+const netWorkProvider = computed(() => {
+  let provider = data.value?.network_provider;
+  const fullname = data.value?.network_provider_fullname;
+  const Operator = simInfo2?.value?.Operator;
+
+  if (!provider && !fullname) return '-';
+  // 中国联通 特殊处理
+  if (provider === 'UNICOM') provider = 'CUCC';
+  const providerMap: Record<string, string> = {
+    CMCC: '中国移动',
+    CUCC: '中国联通',
+    UNICOM: '中国联通',
+    CT: '中国电信',
+    CBN: '中国广电',
+  };
+  // 优先走 code 映射，映射不到再走后端全名
+  return providerMap[provider] ?? fullname ?? '-';
+  // return (providerMap[Operator] ?? Operator ) + (Operator === provider ? '' : '(' + (providerMap[provider] ?? fullname ?? '') + ')');
+});
+
 // API 调用函数
-async function callUbus<T>(request: any): Promise<T> {
-  const response = await axios.post<UbusResponse<T>>('/api/ubus', request);
-  if (response.data.code === 0) {
-    return response.data.result as T;
-  } else {
-    throw new Error(response.data.msg || '接口返回错误');
+// async function callUbus<T>(request: any): Promise<T> {
+//   const response = await axios.post<UbusResponse<T>>('/api/ubus', request);
+//   if (response.data.code === 0) {
+//     return response.data.result as T;
+//   } else {
+//     throw new Error(response.data.msg || '接口返回错误');
+//   }
+// }
+
+async function callUbusBatch(
+    requests: any[]
+): Promise<Record<number, any>> {
+  const resp = await axios.post<ZteRpcResponse[]>(
+      '/api/ubus', requests
+  )
+  const map: Record<number, any> = {}
+  for (const item of resp.data) {
+    const [code, data] = item.result
+    if (code === 0) {
+      map[item.id] = data
+    } else {
+      console.error(`ubus call failed, id=${item.id}`, data)
+    }
   }
+  return map
 }
+
+// async function fetchAllData() {
+//   loading.value = true;
+//   error.value = null;
+//
+//   try {
+//     // 并行请求所有数据
+//     const [
+//       netInfo,
+//       lan,
+//       wan,
+//       wan6,
+//       traffic,
+//       device,
+//       cpuTempData,
+//       simInfoData,
+//       simInfo2Data,
+//       wwanInfoData,
+//       lanUserData,
+//     ] = await Promise.all([
+//       callUbus<NetInfoResult>(netInfoRequest),
+//       callUbus<NetworkInterface>(lanRequest),
+//       callUbus<NetworkInterface>(wanRequest),
+//       callUbus<NetworkInterface>(wan6Request),
+//       callUbus<TrafficData>(trafficRequest),
+//       callUbus<DeviceInfo>(deviceInfoRequest),
+//       callUbus<CpuTemp>(cpuTempRequest),
+//       callUbus<SimInfo>(simInfoRequest),
+//       callUbus<SimInfo2>(simInfo2Request),
+//       callUbus<WwanInfo>(wwanRequest),
+//       callUbus<LanUserList>(lanUserListRequest),
+//     ]);
+//
+//     data.value = netInfo;
+//     lanData.value = lan;
+//     wanData.value = wan;
+//     wan6Data.value = wan6;
+//     trafficData.value = traffic;
+//     deviceInfo.value = device;
+//     cpuTemp.value = cpuTempData;
+//     simInfo.value = simInfoData;
+//     simInfo2.value = simInfo2Data;
+//     wwanInfo.value = wwanInfoData;
+//     lanUserList.value = lanUserData;
+//   } catch (e: any) {
+//     error.value = e?.message || '请求失败';
+//     console.error('数据获取失败:', e);
+//   } finally {
+//     loading.value = false;
+//   }
+// }
 
 async function fetchAllData() {
-  loading.value = true;
-  error.value = null;
-
+  loading.value = true
+  error.value = null
   try {
-    // 并行请求所有数据
-    const [
-      netInfo,
-      lan,
-      wan,
-      wan6,
-      traffic,
-      device,
-      cpuTempData,
-      simInfoData,
-      simInfo2Data,
-      wwanInfoData,
-      lanUserData,
-    ] = await Promise.all([
-      callUbus<NetInfoResult>(netInfoRequest),
-      callUbus<NetworkInterface>(lanRequest),
-      callUbus<NetworkInterface>(wanRequest),
-      callUbus<NetworkInterface>(wan6Request),
-      callUbus<TrafficData>(trafficRequest),
-      callUbus<DeviceInfo>(deviceInfoRequest),
-      callUbus<CpuTemp>(cpuTempRequest),
-      callUbus<SimInfo>(simInfoRequest),
-      callUbus<SimInfo2>(simInfo2Request),
-      callUbus<WwanInfo>(wwanRequest),
-      callUbus<LanUserList>(lanUserListRequest),
-    ]);
-
-    data.value = netInfo;
-    lanData.value = lan;
-    wanData.value = wan;
-    wan6Data.value = wan6;
-    trafficData.value = traffic;
-    deviceInfo.value = device;
-    cpuTemp.value = cpuTempData;
-    simInfo.value = simInfoData;
-    simInfo2.value = simInfo2Data;
-    wwanInfo.value = wwanInfoData;
-    lanUserList.value = lanUserData;
+    const resultMap = await callUbusBatch(batchRequests)
+    // 按 id 取值（清晰又稳定）
+    data.value        = resultMap[1]
+    lanData.value     = resultMap[2]
+    wanData.value     = resultMap[3]
+    wan6Data.value    = resultMap[4]
+    trafficData.value = resultMap[5]
+    // deviceInfo.value  = resultMap[6]
+    cpuTemp.value     = resultMap[7]
+    simInfo.value     = resultMap[8]
+    simInfo2.value    = resultMap[9]
+    // wwanInfo.value    = resultMap[10]
+    // lanUserList.value = resultMap[11]
   } catch (e: any) {
-    error.value = e?.message || '请求失败';
-    console.error('数据获取失败:', e);
+    error.value = e?.message || '请求失败'
+    console.error('数据获取失败:', e)
   } finally {
-    loading.value = false;
+    loading.value = false
   }
 }
+async function fetchAllData2() {
+  loading.value = true
+  error.value = null
+  try {
+    const resultMap = await callUbusBatch(batchRequests2)
+    // 按 id 取值（清晰又稳定）
+    // data.value        = resultMap[1]
+    // lanData.value     = resultMap[2]
+    // wanData.value     = resultMap[3]
+    // wan6Data.value    = resultMap[4]
+    // trafficData.value = resultMap[5]
+    deviceInfo.value  = resultMap[6]
+    // cpuTemp.value     = resultMap[7]
+    // simInfo.value     = resultMap[8]
+    // simInfo2.value    = resultMap[9]
+    wwanInfo.value    = resultMap[10]
+    lanUserList.value = resultMap[11]
+  } catch (e: any) {
+    error.value = e?.message || '请求失败'
+    console.error('数据获取失败:', e)
+  } finally {
+    loading.value = false
+  }
+
+}
+
 
 function refresh() {
   fetchAllData().then((res) => {
     ElMessage.success('数据已刷新');
   });
+  fetchAllData2();
 }
 
 function toggleAutoRefresh() {
@@ -1401,6 +1792,9 @@ function startAutoRefresh() {
   refreshTimer = window.setInterval(() => {
     fetchAllData();
   }, refreshInterval.value);
+  refreshTimer2 = window.setInterval(() => {
+    fetchAllData2();
+  }, refreshInterval2.value);
 }
 
 function stopAutoRefresh() {
@@ -1408,29 +1802,32 @@ function stopAutoRefresh() {
     clearInterval(refreshTimer);
     refreshTimer = null;
   }
+  if (refreshTimer2) {
+    clearInterval(refreshTimer2);
+    refreshTimer2 = null;
+  }
 }
 
 // 一键ADB调试
 function oneClickDebug() {
-  callUbus<any>(openAdbRequest)
-    .then(() => {
-      ElMessage.success('已开启ADB调试模式');
-    })
-    .catch((err) => {
-      ElMessage.error('请求失败：' + (err?.message || '未知错误'));
-    });
+  callUbusBatch([openAdbRequest])
+      .then((map) => {
+        ElMessage.success('已开启ADB调试模式')
+      })
+      .catch((err) => {
+        ElMessage.error('请求失败：' + (err?.message || '未知错误'))
+      })
 }
 
 function oneClickDebugClose() {
-  callUbus<any>(closeAdbRequest)
-    .then(() => {
-      ElMessage.success('已关闭ADB调试模式');
-    })
-    .catch((err) => {
-      ElMessage.error('请求失败：' + (err?.message || '未知错误'));
-    });
+  callUbusBatch([closeAdbRequest])
+      .then((map) => {
+        ElMessage.success('已开启ADB调试模式')
+      })
+      .catch((err) => {
+        ElMessage.error('请求失败：' + (err?.message || '未知错误'))
+      })
 }
-
 
 // 短信转发
 function smsForwardHandler() {
@@ -1442,11 +1839,53 @@ function smsForwardHandler() {
   });
 }
 
+function psmGetHandler() {
+  axios.post('/api/wifi/psm/get', { ifaces: ['wlan0', 'wlan1', 'wlan2', 'wlan3'], })
+    .then((res) => {
+      if (res.data.code !== 0) return;
+      const data = res.data.data;
+      wifiInfo.value.wlan0 = data.wlan0_psm;
+      wifiInfo.value.wlan1 = data.wlan1_psm;
+      wifiInfo.value.wlan2 = data.wlan2_psm;
+      wifiInfo.value.wlan3 = data.wlan3_psm;
+
+      // 2.4G: wlan0
+      wifiInfo.value.wifiStatus24 = data.wlan0_status === 'up';
+      // 5G: wlan2
+      wifiInfo.value.wifiStatus5 = data.wlan2_status === 'up';
+
+      // psm
+      wifiInfo.value.highPerformance = data.wlan2_psm === 'off';
+    })
+}
+function psmSetHandler(val:boolean){
+  axios.post('/api/wifi/psm/set', {
+    ifaces: ['wlan0', 'wlan1', 'wlan2', 'wlan3'],
+    mode: val ? 'off' : 'on',
+  }).then((res) => {
+    psmGetHandler()
+    ElMessage.success('WiFi已切换为:' + (val ? '高性能模式(据说会降低WiFi延迟)' : '省电模式'));
+  });
+}
+function wifiStateSetHandler(iface:string, val:boolean){
+  axios.post('/api/wifi/state/set', {
+    ifaces: [iface],
+    up: val,
+  }).then((res) => {
+    psmGetHandler()
+    ElMessage.success((iface == 'wlan0' ? '2.4G' : ((iface == 'wlan2' ? '5G' : '其他'))) + '-WiFi已' + (val ? '开启' : '关闭'));
+  });
+}
+
+
 onMounted(() => {
   fetchAllData();
+  fetchAllData2();
   if (autoRefresh.value) {
     startAutoRefresh();
   }
+  // 获取WiFi状态
+  psmGetHandler();
 });
 
 onUnmounted(() => {
@@ -2327,4 +2766,13 @@ onUnmounted(() => {
 .mytable{border-collapse: collapse;}
 .mytable,tr,td{border: 1px solid rgb(59, 104, 141);font-size: 14px;text-align: center;}
 .dbmstyle{color: rgb(104, 211, 145)}
+
+.hp {
+  color: #d97706;
+  font-weight: 600;
+}
+.psm {
+  color: #059669;
+  font-weight: 600;
+}
 </style>

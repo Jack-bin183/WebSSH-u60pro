@@ -80,7 +80,12 @@ func main() {
 
 	{
 		// UBUS 调用接口
-		auth.POST("/api/ubus", service.UbusAction)
+		// auth.POST("/api/ubus", service.UbusAction)
+		auth.POST("/api/ubus", service.ZteUbusBatchHandler)
+		// WiFi高性能模型 查询和修改
+		auth.POST("/api/wifi/psm/get", service.WifiPsmGetHandler)
+		auth.POST("/api/wifi/psm/set", service.WifiPsmSetHandler)
+		auth.POST("/api/wifi/state/set", service.WifiStateSetHandler)
 	}
 
 	{ // SSH 连接配置
