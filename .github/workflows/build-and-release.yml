@@ -1,8 +1,9 @@
-name: Build WebSSH
+name: Build & Release WebSSH
 
 on:
   push:
-    branches: [ "master", "main" ]
+    branches: [ "main", "master" ]
+  workflow_dispatch:
 
 jobs:
   build:
@@ -13,36 +14,44 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # 2. 安装 Node
+      # 2. 生成版本号（UTC+8）
+      - name: Generate version
+        id: version
+        run: |
+          VERSION=$(TZ=Asia/Shanghai date +%Y%m%d_%H%M%S)
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "当前版本: $VERSION"
+
+      # 3. Node 环境
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: 20
 
-      # 3. 安装 pnpm
       - name: Install pnpm
         run: npm install -g pnpm
 
-      # 4. 前端构建（webssh）
+      # 4. 构建前端
       - name: Build webssh
         run: |
           cd webssh
           pnpm install
           npm run buildOnly
 
-      # 5. 清空 gossh/webroot 并复制 dist
+      # 5. 拷贝 dist → webroot
       - name: Prepare webroot
         run: |
           rm -rf gossh/webroot/*
           cp -r webssh/dist/* gossh/webroot/
 
-      # 6. 安装 Go
+      # 6. Go 环境
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
           go-version: '1.22'
 
-      # 7. 构建 Go
+      # 7. 构建 Go（带版本号）
       - name: Build Go binary
         run: |
           cd gossh
@@ -54,23 +63,31 @@ jobs:
           go env -w GOPROXY=https://goproxy.cn,direct
           go mod tidy
 
-          BUILD_TIME=$(date +%Y%m%d_%H%M%S)
+          go build -trimpath -ldflags="-s -w -X main.version=${VERSION}" -o webssh_${VERSION}
 
-          go build -trimpath -ldflags="-s -w" -o webssh_${BUILD_TIME}
-
-      # 8. 安装 UPX
+      # 8. 安装 UPX（可选）
       - name: Install UPX
         run: sudo apt-get install -y upx-ucl
 
-      # 9. 压缩二进制
       - name: Compress binary
         run: |
           cd gossh
-          upx --best --lzma webssh_*
+          upx --best --lzma webssh_${VERSION} || true
 
-      # 10. 上传产物
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
+      # 9. 打包
+      - name: Package
+        run: |
+          mkdir release
+          cp gossh/webssh_${VERSION} release/
+          cd release
+          tar -czf webssh_${VERSION}.tar.gz webssh_${VERSION}
+
+      # 10. 创建 Release
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
         with:
-          name: webssh-build
-          path: gossh/webssh_*
+          tag_name: v${{ steps.version.outputs.version }}
+          name: Release v${{ steps.version.outputs.version }}
+          files: release/webssh_${{ steps.version.outputs.version }}.tar.gz
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
