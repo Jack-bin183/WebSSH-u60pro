@@ -2257,7 +2257,7 @@ function oneClickDebug() {
 function oneClickDebugClose() {
   callUbusBatch([closeAdbRequest])
       .then((map) => {
-        ElMessage.success('已开启ADB调试模式')
+        ElMessage.success('已关闭ADB调试模式')
       })
       .catch((err) => {
         ElMessage.error('请求失败：' + (err?.message || '未知错误'))
