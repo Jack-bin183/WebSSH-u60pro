@@ -43,6 +43,8 @@ func DbConnTestCheck(dbConf DbConnConf) error {
 		if err != nil {
 			return err
 		}
+		defer closeTestDB(Db)
+		model.ConfigureDBPool(Db, dbConf.DbType)
 		err = Db.Exec("select 1=1;").Error
 		if err != nil {
 			return err
@@ -54,6 +56,8 @@ func DbConnTestCheck(dbConf DbConnConf) error {
 		if err != nil {
 			return err
 		}
+		defer closeTestDB(Db)
+		model.ConfigureDBPool(Db, dbConf.DbType)
 		err = Db.Exec("select 1=1;").Error
 		if err != nil {
 			return err
@@ -65,10 +69,22 @@ func DbConnTestCheck(dbConf DbConnConf) error {
 		if err != nil {
 			return err
 		}
+		defer closeTestDB(Db)
 		err = Db.Exec("select 1=1;").Error
 		if err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+func closeTestDB(db *gorm.DB) {
+	sqlDB, err := db.DB()
+	if err != nil {
+		slog.Warn("close test db skipped", "err_msg", err.Error())
+		return
+	}
+	if err := sqlDB.Close(); err != nil {
+		slog.Warn("close test db failed", "err_msg", err.Error())
+	}
 }

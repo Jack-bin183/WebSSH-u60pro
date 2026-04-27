@@ -56,6 +56,7 @@ func main() {
 
 	gin.SetMode(gin.ReleaseMode)
 	var engine = gin.Default()
+	engine.MaxMultipartMemory = 8 << 20
 	engine.Use(middleware.DbCheck(), middleware.NetFilter())
 	engine.GET("/web_base_dir", func(c *gin.Context) { c.JSON(200, gin.H{"code": 0, "web_base_dir": config.DefaultConfig.WebBaseDir}) })
 

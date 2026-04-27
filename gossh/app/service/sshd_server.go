@@ -48,7 +48,7 @@ func NewServer(c *model.SshdConf) (*Server, error) {
 func (s *Server) Start() error {
 	listen, err := net.Listen("tcp", fmt.Sprintf("%s:%d", s.cli.Host, s.cli.Port))
 	if err != nil {
-		return fmt.Errorf("failed to listen on" + fmt.Sprintf("%s:%d", s.cli.Host, s.cli.Port))
+		return fmt.Errorf("failed to listen on %s:%d: %w", s.cli.Host, s.cli.Port, err)
 	}
 	slog.Info("Listening on", "host", s.cli.Host, "port", s.cli.Port)
 	for {

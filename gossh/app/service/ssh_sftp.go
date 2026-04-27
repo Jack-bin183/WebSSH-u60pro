@@ -130,14 +130,14 @@ func SftpDownLoad(c *gin.Context) {
 	}
 
 	file, err := conn.sftpClient.Open(fullPath)
-	defer func() {
-		_ = file.Close()
-	}()
 	if err != nil {
 		slog.Error("sftpClient.Openc错误", "err_msg", err.Error())
 		c.JSON(200, gin.H{"code": 4, "msg": "sftp打开文件错误"})
 		return
 	}
+	defer func() {
+		_ = file.Close()
+	}()
 
 	stat, err := file.Stat()
 	if err != nil {
@@ -177,6 +177,9 @@ func SftpUpload(c *gin.Context) {
 		c.JSON(200, gin.H{"code": 1, "msg": "获取form数据错误"})
 		return
 	}
+	defer func() {
+		_ = form.RemoveAll()
+	}()
 	files := form.File["files"]
 	// files := c.Request.MultipartForm.File["file"]
 
@@ -196,14 +199,15 @@ func SftpUpload(c *gin.Context) {
 		fileName := file.Filename
 		dstFile, err := conn.sftpClient.Create(path.Join(dstPath, fileName))
 		if err != nil {
+			_ = srcFile.Close()
 			continue
 		}
 		_, err = io.Copy(dstFile, srcFile)
-		if err != nil {
+		srcErr := srcFile.Close()
+		dstErr := dstFile.Close()
+		if err != nil || srcErr != nil || dstErr != nil {
 			continue
 		}
-		_ = srcFile.Close()
-		_ = dstFile.Close()
 		ret = append(ret, fileName)
 	}
 	msg := strconv.Itoa(len(ret)) + " 个文件上传成功"

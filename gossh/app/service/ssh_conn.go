@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -44,6 +45,8 @@ type SshConn struct {
 	// websocket 连接
 	ws *websocket.Conn
 }
+
+var wsWriteBufferPool = &sync.Pool{}
 
 // MarshalJSON 重写序列化方法
 func (s *SshConn) MarshalJSON() ([]byte, error) {
@@ -241,6 +244,7 @@ func NewSshConn(c *gin.Context) {
 	upgrader := websocket.Upgrader{
 		ReadBufferSize:  4096,
 		WriteBufferSize: 4096,
+		WriteBufferPool: wsWriteBufferPool,
 		CheckOrigin: func(r *http.Request) bool {
 			return true
 		},
@@ -361,6 +365,9 @@ func CreateSessionId(c *gin.Context) {
 		c.JSON(200, gin.H{"code": 1, "msg": "CreateSessionId error:" + err.Error()})
 		return
 	}
+	conn.Pwd = ""
+	conn.CertPwd = ""
+	conn.CertData = ""
 
 	OnlineClients.Store(sessionId, &conn)
 	c.JSON(200, gin.H{"code": 0, "data": sessionId, "msg": "ok"})

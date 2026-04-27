@@ -15,6 +15,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"time"
 )
 
 var Db *gorm.DB
@@ -52,6 +53,7 @@ func GetSqliteDb(dsn string) (*gorm.DB, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to get database instance: %v", err)
 	}
+	ConfigureDBPool(db, "sqlite")
 
 	if err := sqlDB.Ping(); err != nil {
 		return nil, fmt.Errorf("failed to ping database: %v", err)
@@ -73,6 +75,7 @@ func DbMigrate(dbType, dsn string) error {
 		if err != nil {
 			return err
 		}
+		ConfigureDBPool(db, dbType)
 		err = db.Exec("select 1=1;").Error
 		if err != nil {
 			return err
@@ -87,6 +90,7 @@ func DbMigrate(dbType, dsn string) error {
 		if err != nil {
 			return err
 		}
+		ConfigureDBPool(db, dbType)
 		err = db.Exec("select 1=1;").Error
 		if err != nil {
 			return err
@@ -116,4 +120,23 @@ func DbMigrate(dbType, dsn string) error {
 	}
 
 	return nil
+}
+
+func ConfigureDBPool(db *gorm.DB, dbType string) {
+	sqlDB, err := db.DB()
+	if err != nil {
+		slog.Warn("configure db pool skipped", "err_msg", err.Error())
+		return
+	}
+
+	if dbType == "sqlite" {
+		sqlDB.SetMaxOpenConns(1)
+		sqlDB.SetMaxIdleConns(1)
+		return
+	}
+
+	sqlDB.SetMaxOpenConns(8)
+	sqlDB.SetMaxIdleConns(2)
+	sqlDB.SetConnMaxIdleTime(5 * time.Minute)
+	sqlDB.SetConnMaxLifetime(30 * time.Minute)
 }
