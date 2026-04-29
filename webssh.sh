@@ -5,72 +5,95 @@ BOOT_CMD="sh $Module_dir/service.sh start"
 STOP_CMD="sh $Module_dir/service.sh stop"
 FILE="/etc/rc.local"
 
+SCRIPT_URL="https://raw.githubusercontent.com/cdwangtao/WebSSH-u60pro/refs/heads/master/webssh.sh"
+SCRIPT_TMP="/tmp/webssh_install.sh"
+
 VERSION_URL="https://github.com/cdwangtao/WebSSH-u60pro/releases/latest/download/version.txt"
 WEBSH_URL_PREFIX="https://github.com/cdwangtao/WebSSH-u60pro/releases/latest/download/webssh_"
 
-MIRRORS="
-https://v6.gh-proxy.org/https://github.com
-https://gh-proxy.org/https://github.com
-https://hk.gh-proxy.org/https://github.com
-https://cdn.gh-proxy.org/https://github.com
-https://edgeone.gh-proxy.org/https://github.com
-https://fastgit.cc/https://github.com
-https://git.yylx.win/github.com
-https://gh.llkk.cc/https://github.com
-https://ghfast.top/https://github.com
-https://github.com
+PROXIES="
+https://v6.gh-proxy.org/
+https://gh-proxy.org/
+https://hk.gh-proxy.org/
+https://cdn.gh-proxy.org/
+https://edgeone.gh-proxy.org/
+https://fastgit.cc/
+https://git.yylx.win/
+https://gh.llkk.cc/
+https://ghfast.top/
 "
 
 fetch_url() {
     _original_url="$1"
-    for _mirror in $MIRRORS; do
-        _url=$(echo "$_original_url" | sed "s|https://github.com|$_mirror|")
-        echo "  尝试: $_url" >&2
+    for _proxy in $PROXIES; do
+        _url="${_proxy}${_original_url}"
         _result=$(curl -fsSL --connect-timeout 10 "$_url" 2>/dev/null)
         if [ $? -eq 0 ] && [ -n "$_result" ]; then
             echo "$_result"
             return 0
         fi
     done
+    _result=$(curl -fsSL --connect-timeout 10 "$_original_url" 2>/dev/null)
+    if [ $? -eq 0 ] && [ -n "$_result" ]; then
+        echo "$_result"
+        return 0
+    fi
     return 1
 }
 
 download_file() {
     _original_url="$1"
     _output="$2"
-    for _mirror in $MIRRORS; do
-        _url=$(echo "$_original_url" | sed "s|https://github.com|$_mirror|")
-        echo "  尝试: $_url" >&2
-        if curl -fSL --connect-timeout 10 "$_url" --output "$_output" 2>/dev/null; then
-            return 0
+    _show_progress="${3:-0}"
+    for _proxy in $PROXIES; do
+        _url="${_proxy}${_original_url}"
+        if [ "$_show_progress" = "1" ]; then
+            curl -fSL --connect-timeout 10 -# "$_url" --output "$_output" && return 0
+        else
+            curl -fSL --connect-timeout 10 "$_url" --output "$_output" 2>/dev/null && return 0
         fi
     done
+    if [ "$_show_progress" = "1" ]; then
+        curl -fSL --connect-timeout 10 -# "$_original_url" --output "$_output" && return 0
+    else
+        curl -fSL --connect-timeout 10 "$_original_url" --output "$_output" 2>/dev/null && return 0
+    fi
     return 1
 }
 
+add_alias() {
+    ALIAS_CMD="alias webssh=\"ash $Module_dir/webssh.sh\""
+
+    for f in /etc/shinit /etc/profile; do
+        if [ ! -f "$f" ]; then
+            touch "$f"
+        fi
+
+        grep -F "$ALIAS_CMD" "$f" >/dev/null 2>&1
+        if [ $? -ne 0 ]; then
+            echo "$ALIAS_CMD" >> "$f"
+        fi
+    done
+}
+
 setup_webssh() {
-    # 获取远程版本
     echo "检查版本信息..."
-    if ! REMOTE_VERSION=$(fetch_url "$VERSION_URL"); then
-        echo "获取远程版本失败，请检查网络连接"
+    if ! REMOTE_VERSION=$(fetch_url "$VERSION_URL" 2>/dev/null); then
+        echo "  获取远程版本失败，请检查网络连接"
         return 1
     fi
     REMOTE_VERSION=$(echo "$REMOTE_VERSION" | tr -d '\r\n')
+    echo "  最新版本: $REMOTE_VERSION"
     
-    # 检查是否已安装
     if [ -f "$Module_dir/webssh" ]; then
-        # 更新场景
-        # 读取本地版本
         if [ -f "$Module_dir/VERSION.txt" ]; then
             LOCAL_VERSION=$(cat "$Module_dir/VERSION.txt" 2>/dev/null | tr -d '\r\n')
         else
             LOCAL_VERSION="未知"
         fi
         
-        echo "当前版本: $LOCAL_VERSION"
-        echo "最新版本: $REMOTE_VERSION"
+        echo "  当前版本: $LOCAL_VERSION"
         
-        # 比较版本号
         if [ "$LOCAL_VERSION" = "$REMOTE_VERSION" ]; then
             echo "已是最新版本，无需更新"
             return 0
@@ -83,19 +106,17 @@ setup_webssh() {
             return 0
         fi
         
-        # 停止服务
         echo "停止 WebSSH 服务..."
-        $STOP_CMD
+        $STOP_CMD 2>/dev/null
         
-        # 下载最新的 webssh 可执行文件
         echo "下载最新版本..."
-        if ! download_file "${WEBSH_URL_PREFIX}${REMOTE_VERSION}" "$Module_dir/webssh.new"; then
-            echo "下载失败，请检查网络连接"
-            # 尝试启动旧版本
-            echo "尝试启动旧版本..."
-            $BOOT_CMD
+        if ! download_file "${WEBSH_URL_PREFIX}${REMOTE_VERSION}" "$Module_dir/webssh.new" 1; then
+            echo "  下载失败，请检查网络连接"
+            echo "  尝试启动旧版本..."
+            $BOOT_CMD 2>/dev/null
             return 1
         fi
+        echo "  下载完成"
         
         # 设置执行权限并替换
         chmod 755 "$Module_dir/webssh.new"
@@ -105,23 +126,32 @@ setup_webssh() {
         echo "$REMOTE_VERSION" > "$Module_dir/VERSION.txt"
         
         # 启动服务
-        echo "启动 WebSSH 服务..."
-        if ! $BOOT_CMD; then
+        echo "重启 WebSSH 服务..."
+        if ! $BOOT_CMD 2>/dev/null; then
             echo "启动失败，请检查 $Module_dir/service.sh"
             return 1
         fi
         
-        echo "WebSSH 已成功更新到版本 $REMOTE_VERSION 并重启"
+        clear
+        echo ""
+        echo "======================================"
+        echo "       WebSSH 更新完成"
+        echo "--------------------------------------"
+        echo "  版本   : $LOCAL_VERSION -> $REMOTE_VERSION"
+        echo "  访问   : http://192.168.0.1:8899"
+        echo "======================================"
+        echo ""
     else
         # 安装场景
         # 确保目标目录存在
         mkdir -p "$Module_dir"
 
         echo "下载 WebSSH 主程序..."
-        if ! download_file "${WEBSH_URL_PREFIX}${REMOTE_VERSION}" "$Module_dir/webssh"; then
-            echo "下载失败，请检查网络或链接"
+        if ! download_file "${WEBSH_URL_PREFIX}${REMOTE_VERSION}" "$Module_dir/webssh" 1; then
+            echo "  下载失败，请检查网络或链接"
             return 1
         fi
+        echo "  下载完成"
 
         chmod 755 "$Module_dir/webssh"
 
@@ -184,50 +214,56 @@ SEOF
         fi
 
         # 启动
-        echo "启动WEBSSH中..."
-        $STOP_CMD
-        if ! $BOOT_CMD; then
+        echo "启动 WebSSH 服务..."
+        $STOP_CMD 2>/dev/null
+        if ! $BOOT_CMD 2>/dev/null; then
             echo "启动失败，请检查 $Module_dir/service.sh"
             return 1
         fi
         
         sleep 3
         clear
-        echo "WebSSH已安装并部署"
-        echo "当前版本: $REMOTE_VERSION"
-        echo "快捷方式（务必记住）："
-        echo "使用：$BOOT_CMD 启动服务"
-        echo "使用：$STOP_CMD 停止服务"
-        echo "webssh 默认访问地址：http://192.168.0.1:8899"
-        echo "如果你是第一次使用，请点击链接进行初始化配置"
+
+        download_file "$SCRIPT_URL" "$SCRIPT_TMP" && cp "$SCRIPT_TMP" "$Module_dir/webssh.sh"
+        add_alias
+
+        echo ""
+        echo "======================================"
+        echo "       WebSSH 安装完成"
+        echo "--------------------------------------"
+        echo "  版本   : $REMOTE_VERSION"
+        echo "  目录   : $Module_dir"
+        echo "  访问   : http://192.168.0.1:8899"
+        echo "  快捷键 : webssh (重开终端生效)"
+        echo "======================================"
+        echo ""
+        echo "  首次使用请访问上方地址进行初始化配置"
     fi
 }
 
 force_install() {
     echo "强制安装模式 - 跳过版本检查"
     
-    # 获取远程版本（仅用于记录）
     echo "获取版本信息..."
-    if REMOTE_VERSION=$(fetch_url "$VERSION_URL"); then
+    if REMOTE_VERSION=$(fetch_url "$VERSION_URL" 2>/dev/null); then
         REMOTE_VERSION=$(echo "$REMOTE_VERSION" | tr -d '\r\n')
-        echo "最新版本: $REMOTE_VERSION"
+        echo "  最新版本: $REMOTE_VERSION"
     else
         REMOTE_VERSION="未知"
-        echo "获取版本失败，使用未知版本"
+        echo "  获取版本失败，使用未知版本"
     fi
     
-    # 停止服务（如果正在运行）
     echo "停止 WebSSH 服务..."
     $STOP_CMD 2>/dev/null || true
     
-    # 确保目标目录存在
     mkdir -p "$Module_dir"
     
     echo "下载 WebSSH 主程序..."
-    if ! download_file "${WEBSH_URL_PREFIX}${REMOTE_VERSION}" "$Module_dir/webssh"; then
-        echo "下载失败，请检查网络或链接"
+    if ! download_file "${WEBSH_URL_PREFIX}${REMOTE_VERSION}" "$Module_dir/webssh" 1; then
+        echo "  下载失败，请检查网络或链接"
         return 1
     fi
+    echo "  下载完成"
 
     chmod 755 "$Module_dir/webssh"
 
@@ -290,21 +326,29 @@ SEOF
     fi
 
     # 启动
-    echo "启动WEBSSH中..."
-    if ! $BOOT_CMD; then
+    echo "启动 WebSSH 服务..."
+    if ! $BOOT_CMD 2>/dev/null; then
         echo "启动失败，请检查 $Module_dir/service.sh"
         return 1
     fi
     
     sleep 3
     clear
-    echo "WebSSH 已强制安装完成"
-    echo "当前版本: $REMOTE_VERSION"
-    echo "相关命令："
-    echo "使用：$BOOT_CMD 启动服务"
-    echo "使用：$STOP_CMD 停止服务"
-    echo "webssh 默认访问地址：http://192.168.0.1:8899"
-    echo "如果你是第一次使用，请点击链接进行初始化配置"
+
+    download_file "$SCRIPT_URL" "$SCRIPT_TMP" && cp "$SCRIPT_TMP" "$Module_dir/webssh.sh"
+    add_alias
+
+    echo ""
+    echo "======================================"
+    echo "       WebSSH 强制安装完成"
+    echo "--------------------------------------"
+    echo "  版本   : $REMOTE_VERSION"
+    echo "  目录   : $Module_dir"
+    echo "  访问   : http://192.168.0.1:8899"
+    echo "  快捷键 : webssh (重开终端生效)"
+    echo "======================================"
+    echo ""
+    echo "  首次使用请访问上方地址进行初始化配置"
 }
 
 remove() {
@@ -318,6 +362,14 @@ remove() {
     if [ -f "$FILE" ]; then
         sed -i "/kano_web_ssh/d" "$FILE"
     fi
+
+    # 清除别名
+    ALIAS_CMD="alias webssh=\"ash $Module_dir/webssh.sh\""
+    for f in /etc/shinit /etc/profile; do
+        if [ -f "$f" ]; then
+            sed -i "\|$ALIAS_CMD|d" "$f"
+        fi
+    done
 
     # 删除目录
     rm -rf "$Module_dir"
@@ -349,6 +401,13 @@ stop() {
     $STOP_CMD
 }
 
+restart() {
+    check_is_installed
+    echo "重启 WebSSH 服务..."
+    $STOP_CMD
+    $BOOT_CMD
+}
+
 while true; do
     clear
     _menu_ver=$(fetch_url "$VERSION_URL" 2>/dev/null | tr -d '\r\n')
@@ -376,6 +435,7 @@ while true; do
     _install_idx=""
     _start_idx=""
     _stop_idx=""
+    _restart_idx=""
     echo "======================================"
     echo "       WebSSH(高级后台) 管理脚本"
     echo "--------------------------------------"
@@ -406,6 +466,7 @@ while true; do
     if [ "$_installed" = "1" ]; then
         _start_idx=$_idx; echo "  $_idx) 启动 (start)"; _idx=$((_idx + 1))
         _stop_idx=$_idx; echo "  $_idx) 停止 (stop)"; _idx=$((_idx + 1))
+        _restart_idx=$_idx; echo "  $_idx) 重启 (restart)"; _idx=$((_idx + 1))
     fi
     _exit_idx=0
     echo "  0) 退出 (exit)"
@@ -432,6 +493,10 @@ while true; do
             ;;
         $_stop_idx)
             stop
+            read -rp "按回车键继续..." dummy </dev/tty
+            ;;
+        $_restart_idx)
+            restart
             read -rp "按回车键继续..." dummy </dev/tty
             ;;
         0)
