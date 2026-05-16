@@ -5,7 +5,7 @@
     <div class="page-header">
       <div class="title-section">
         <h1 class="title">
-          <div class="uptime-value" style="font-size: 20px">
+          <div class="uptime-value">
             已运行{{ formatUptime(deviceInfo.device_uptime as any) }}
           </div>
         </h1>
@@ -300,10 +300,10 @@
                   <td>{{ d.nr5g_action_band?.toUpperCase() ?? '-' }}</td>
                   <td>{{ d.nr5g_action_channel ?? '-' }}</td>
                   <td>{{ d.nr5g_bandwidth ? d.nr5g_bandwidth + 'Mhz' : '-' }}</td>
-                  <td class="dbmstyle">{{ d.nr5g_rsrp }}</td>
-                  <td>{{ d.nr5g_rsrq }}</td>
-                  <td>{{ d.nr5g_snr }}</td>
-                  <td class="dbmstyle">{{ d.nr5g_rssi }}</td>
+                  <td :class="['dbmstyle', getSignalValueClass('rsrp', d.nr5g_rsrp)]">{{ d.nr5g_rsrp }}</td>
+                  <td :class="getSignalValueClass('rsrq', d.nr5g_rsrq)">{{ d.nr5g_rsrq }}</td>
+                  <td :class="getSignalValueClass('sinr', d.nr5g_snr)">{{ d.nr5g_snr }}</td>
+                  <td :class="['dbmstyle', getSignalValueClass('rssi', d.nr5g_rssi)]">{{ d.nr5g_rssi }}</td>
                 </tr>
                 <tr>
                   <td>SCC0</td>
@@ -317,10 +317,10 @@
                         : '-'
                     }}
                   </td>
-                  <td class="dbmstyle">{{ formatNrca(d.nrca,'',0,7) }}</td>
-                  <td>{{ formatNrca(d.nrca,'',0,8) }}</td>
-                  <td>{{ formatNrca(d.nrca,'',0,9) }}</td>
-                  <td class="dbmstyle">{{ formatNrca(d.nrca,'',0,10) }}</td>
+                  <td :class="['dbmstyle', getSignalValueClass('rsrp', formatNrca(d.nrca,'',0,7))]">{{ formatNrca(d.nrca,'',0,7) }}</td>
+                  <td :class="getSignalValueClass('rsrq', formatNrca(d.nrca,'',0,8))">{{ formatNrca(d.nrca,'',0,8) }}</td>
+                  <td :class="getSignalValueClass('sinr', formatNrca(d.nrca,'',0,9))">{{ formatNrca(d.nrca,'',0,9) }}</td>
+                  <td :class="['dbmstyle', getSignalValueClass('rssi', formatNrca(d.nrca,'',0,10))]">{{ formatNrca(d.nrca,'',0,10) }}</td>
                 </tr>
                 <tr>
                   <td>SCC1</td>
@@ -334,10 +334,10 @@
                         : '-'
                     }}
                   </td>
-                  <td class="dbmstyle">{{ formatNrca(d.nrca,'',1,7) }}</td>
-                  <td>{{ formatNrca(d.nrca,'',1,8) }}</td>
-                  <td>{{ formatNrca(d.nrca,'',1,9) }}</td>
-                  <td class="dbmstyle">{{ formatNrca(d.nrca,'',1,10) }}</td>
+                  <td :class="['dbmstyle', getSignalValueClass('rsrp', formatNrca(d.nrca,'',1,7))]">{{ formatNrca(d.nrca,'',1,7) }}</td>
+                  <td :class="getSignalValueClass('rsrq', formatNrca(d.nrca,'',1,8))">{{ formatNrca(d.nrca,'',1,8) }}</td>
+                  <td :class="getSignalValueClass('sinr', formatNrca(d.nrca,'',1,9))">{{ formatNrca(d.nrca,'',1,9) }}</td>
+                  <td :class="['dbmstyle', getSignalValueClass('rssi', formatNrca(d.nrca,'',1,10))]">{{ formatNrca(d.nrca,'',1,10) }}</td>
                 </tr>
                 <tr>
                   <td>SCC2</td>
@@ -351,10 +351,10 @@
                         : '-'
                     }}
                   </td>
-                  <td class="dbmstyle">{{ formatNrca(d.nrca,'',2,7) }}</td>
-                  <td>{{ formatNrca(d.nrca,'',2,8) }}</td>
-                  <td>{{ formatNrca(d.nrca,'',2,9) }}</td>
-                  <td class="dbmstyle">{{ formatNrca(d.nrca,'',2,10) }}</td>
+                  <td :class="['dbmstyle', getSignalValueClass('rsrp', formatNrca(d.nrca,'',2,7))]">{{ formatNrca(d.nrca,'',2,7) }}</td>
+                  <td :class="getSignalValueClass('rsrq', formatNrca(d.nrca,'',2,8))">{{ formatNrca(d.nrca,'',2,8) }}</td>
+                  <td :class="getSignalValueClass('sinr', formatNrca(d.nrca,'',2,9))">{{ formatNrca(d.nrca,'',2,9) }}</td>
+                  <td :class="['dbmstyle', getSignalValueClass('rssi', formatNrca(d.nrca,'',2,10))]">{{ formatNrca(d.nrca,'',2,10) }}</td>
                 </tr>
               </table>
             </div>
@@ -557,10 +557,10 @@
                         : '-'
                     }}
                   </td>
-                  <td class="dbmstyle">{{ d.lte_rsrp }}</td>
-                  <td>{{ d.lte_rsrq }}</td>
-                  <td>{{ d.lte_snr }}</td>
-                  <td class="dbmstyle">{{ d.lte_rssi }}</td>
+                  <td :class="['dbmstyle', getSignalValueClass('rsrp', d.lte_rsrp)]">{{ d.lte_rsrp }}</td>
+                  <td :class="getSignalValueClass('rsrq', d.lte_rsrq)">{{ d.lte_rsrq }}</td>
+                  <td :class="getSignalValueClass('sinr', d.lte_snr)">{{ d.lte_snr }}</td>
+                  <td :class="['dbmstyle', getSignalValueClass('rssi', d.lte_rssi)]">{{ d.lte_rssi }}</td>
                 </tr>
                 <tr>
                   <td>SCC0</td>
@@ -573,10 +573,10 @@
                         : '-'
                     }}
                   </td>
-                  <td class="dbmstyle">{{ formatNrca(d.ltecasig,'',0,0) }}</td>
-                  <td>{{ formatNrca(d.ltecasig,'',0,1) }}</td>
-                  <td>{{ formatNrca(d.ltecasig,'',0,2) }}</td>
-                  <td class="dbmstyle">{{ formatNrca(d.ltecasig,'',0,3) }}</td>
+                  <td :class="['dbmstyle', getSignalValueClass('rsrp', formatNrca(d.ltecasig,'',0,0))]">{{ formatNrca(d.ltecasig,'',0,0) }}</td>
+                  <td :class="getSignalValueClass('rsrq', formatNrca(d.ltecasig,'',0,1))">{{ formatNrca(d.ltecasig,'',0,1) }}</td>
+                  <td :class="getSignalValueClass('sinr', formatNrca(d.ltecasig,'',0,2))">{{ formatNrca(d.ltecasig,'',0,2) }}</td>
+                  <td :class="['dbmstyle', getSignalValueClass('rssi', formatNrca(d.ltecasig,'',0,3))]">{{ formatNrca(d.ltecasig,'',0,3) }}</td>
                 </tr>
                 <tr>
                   <td>SCC1</td>
@@ -589,10 +589,10 @@
                         : '-'
                     }}
                   </td>
-                  <td class="dbmstyle">{{ formatNrca(d.ltecasig,'',1,0) }}</td>
-                  <td>{{ formatNrca(d.ltecasig,'',1,1) }}</td>
-                  <td>{{ formatNrca(d.ltecasig,'',1,2) }}</td>
-                  <td class="dbmstyle">{{ formatNrca(d.ltecasig,'',1,3) }}</td>
+                  <td :class="['dbmstyle', getSignalValueClass('rsrp', formatNrca(d.ltecasig,'',1,0))]">{{ formatNrca(d.ltecasig,'',1,0) }}</td>
+                  <td :class="getSignalValueClass('rsrq', formatNrca(d.ltecasig,'',1,1))">{{ formatNrca(d.ltecasig,'',1,1) }}</td>
+                  <td :class="getSignalValueClass('sinr', formatNrca(d.ltecasig,'',1,2))">{{ formatNrca(d.ltecasig,'',1,2) }}</td>
+                  <td :class="['dbmstyle', getSignalValueClass('rssi', formatNrca(d.ltecasig,'',1,3))]">{{ formatNrca(d.ltecasig,'',1,3) }}</td>
                 </tr>
                 <tr>
                   <td>SCC2</td>
@@ -605,10 +605,10 @@
                         : '-'
                     }}
                   </td>
-                  <td class="dbmstyle">{{ formatNrca(d.ltecasig,'',2,0) }}</td>
-                  <td>{{ formatNrca(d.ltecasig,'',2,1) }}</td>
-                  <td>{{ formatNrca(d.ltecasig,'',2,2) }}</td>
-                  <td class="dbmstyle">{{ formatNrca(d.ltecasig,'',2,3) }}</td>
+                  <td :class="['dbmstyle', getSignalValueClass('rsrp', formatNrca(d.ltecasig,'',2,0))]">{{ formatNrca(d.ltecasig,'',2,0) }}</td>
+                  <td :class="getSignalValueClass('rsrq', formatNrca(d.ltecasig,'',2,1))">{{ formatNrca(d.ltecasig,'',2,1) }}</td>
+                  <td :class="getSignalValueClass('sinr', formatNrca(d.ltecasig,'',2,2))">{{ formatNrca(d.ltecasig,'',2,2) }}</td>
+                  <td :class="['dbmstyle', getSignalValueClass('rssi', formatNrca(d.ltecasig,'',2,3))]">{{ formatNrca(d.ltecasig,'',2,3) }}</td>
                 </tr>
                 <tr>
                   <td>SCC3</td>
@@ -621,10 +621,10 @@
                         : '-'
                     }}
                   </td>
-                  <td class="dbmstyle">{{ formatNrca(d.ltecasig,'',4,0) }}</td>
-                  <td>{{ formatNrca(d.ltecasig,'',4,1) }}</td>
-                  <td>{{ formatNrca(d.ltecasig,'',4,2) }}</td>
-                  <td class="dbmstyle">{{ formatNrca(d.ltecasig,'',4,3) }}</td>
+                  <td :class="['dbmstyle', getSignalValueClass('rsrp', formatNrca(d.ltecasig,'',4,0))]">{{ formatNrca(d.ltecasig,'',4,0) }}</td>
+                  <td :class="getSignalValueClass('rsrq', formatNrca(d.ltecasig,'',4,1))">{{ formatNrca(d.ltecasig,'',4,1) }}</td>
+                  <td :class="getSignalValueClass('sinr', formatNrca(d.ltecasig,'',4,2))">{{ formatNrca(d.ltecasig,'',4,2) }}</td>
+                  <td :class="['dbmstyle', getSignalValueClass('rssi', formatNrca(d.ltecasig,'',4,3))]">{{ formatNrca(d.ltecasig,'',4,3) }}</td>
                 </tr>
               </table>
             </div>
@@ -2225,6 +2225,10 @@ function getSignalDisplayStatus(
   return getSignalStatus(metric, rawValue);
 }
 
+function getSignalValueClass(metric: SignalMetric, rawValue: unknown): string {
+  return `signal-value ${getSignalStatus(metric, rawValue).className}`;
+}
+
 function getAverageSignalStatus(statuses: SignalStatus[]): SignalStatus {
   const validStatuses = statuses.filter(item => item.className !== 'unknown');
   if (!validStatuses.length) return signalStatusMap.unknown;
@@ -3146,9 +3150,11 @@ onUnmounted(() => {
 }
 
 .uptime-value {
-  font-size: 24px;
+  font-size: 20px;
   font-weight: 600;
+  line-height: 1.25;
   color: rgba(255, 255, 255, 0.9);
+  white-space: nowrap;
 }
 
 /* 信息网格 */
@@ -3408,6 +3414,36 @@ onUnmounted(() => {
   color: #cbd5e1;
 }
 
+.signal-value {
+  font-weight: 800;
+  transition: color 0.2s ease, text-shadow 0.2s ease;
+}
+
+.signal-value.excellent {
+  color: #7ee787;
+  text-shadow: 0 0 10px rgba(126, 231, 135, 0.26);
+}
+
+.signal-value.good {
+  color: #7dd3fc;
+  text-shadow: 0 0 10px rgba(125, 211, 252, 0.22);
+}
+
+.signal-value.fair {
+  color: #f6ad55;
+  text-shadow: 0 0 10px rgba(246, 173, 85, 0.22);
+}
+
+.signal-value.poor {
+  color: #fc8181;
+  text-shadow: 0 0 10px rgba(252, 129, 129, 0.24);
+}
+
+.signal-value.unknown {
+  color: #cbd5e1;
+  text-shadow: none;
+}
+
 .progress-bar {
   position: relative;
   height: 24px;
@@ -3659,6 +3695,12 @@ onUnmounted(() => {
 
   .title {
     font-size: 24px;
+  }
+
+  .uptime-value {
+    font-size: 15px;
+    line-height: 1.35;
+    white-space: normal;
   }
 
   .controls {
