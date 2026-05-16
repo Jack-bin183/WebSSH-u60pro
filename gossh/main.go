@@ -26,7 +26,7 @@ import (
 
 var version = "dev"
 
-const GithubRepo = "cdwangtao/WebSSH-u60pro"
+const GithubRepo = "Jack-bin183/WebSSH-u60pro"
 
 type GithubAsset struct {
 	Name               string `json:"name"`
