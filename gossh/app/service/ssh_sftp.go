@@ -573,6 +573,11 @@ func SftpCompressDir(c *gin.Context) {
 	cmd := fmt.Sprintf("cd %s && tar -czf %s %s", shellQuote(parentDir), shellQuote(archiveName), shellQuote(baseName))
 	out, err := execSftpShellCommand(conn, cmd)
 	if err != nil {
+		if stat, statErr := conn.sftpClient.Stat(archivePath); statErr == nil && !stat.IsDir() {
+			slog.Warn("压缩目录命令返回异常但压缩包已生成", "err_msg", err.Error(), "output", out)
+			c.JSON(200, gin.H{"code": 0, "msg": "压缩成功", "data": gin.H{"path": archivePath, "output": out, "warning": out}})
+			return
+		}
 		slog.Error("压缩目录命令错误", "err_msg", err.Error(), "output", out)
 		c.JSON(200, gin.H{"code": 4, "msg": "压缩目录错误", "data": out})
 		return
