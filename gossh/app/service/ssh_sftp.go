@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"path"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -70,6 +71,9 @@ func SftpList(c *gin.Context) {
 		c.JSON(200, gin.H{"code": 3, "msg": "sftp客户端读取目录错误"})
 		return
 	}
+	sort.Slice(files, func(i, j int) bool {
+		return files[i].ModTime().After(files[j].ModTime())
+	})
 
 	fileCount := 0
 	dirCount := 0
@@ -304,6 +308,46 @@ func SftpCreateDir(c *gin.Context) {
 		return
 	}
 	c.JSON(200, gin.H{"code": 0, "msg": "创建目录成功"})
+}
+
+// SftpCreateFile sftp 创建空文件
+func SftpCreateFile(c *gin.Context) {
+	defer func() {
+		if err := recover(); err != nil {
+			c.JSON(200, gin.H{"code": 4, "msg": "创建文件错误"})
+			return
+		}
+	}()
+
+	type Body struct {
+		SessionId string `form:"session_id" binding:"required,min=1,max=128" json:"session_id"`
+		Path      string `form:"path" binding:"required,min=1,max=1024" json:"path"`
+	}
+
+	var body Body
+	if err := c.ShouldBind(&body); err != nil {
+		slog.Error("绑定数据错误", "err_msg", err.Error())
+		c.JSON(200, gin.H{"code": 1, "msg": "输入数据不合法"})
+		return
+	}
+	conn, err := getSshConn(body.SessionId)
+	if err != nil {
+		slog.Error(err.Error())
+		c.JSON(200, gin.H{"code": 1, "msg": err.Error()})
+		return
+	}
+
+	file, err := conn.sftpClient.OpenFile(body.Path, os.O_WRONLY|os.O_CREATE|os.O_EXCL)
+	if err != nil {
+		slog.Error("sftpClient.OpenFile创建文件错误", "err_msg", err.Error())
+		c.JSON(200, gin.H{"code": 2, "msg": "创建文件错误, 文件可能已存在"})
+		return
+	}
+	defer func() {
+		_ = file.Close()
+	}()
+
+	c.JSON(200, gin.H{"code": 0, "msg": "创建文件成功"})
 }
 
 // SftpRename sftp 重命名文件或目录

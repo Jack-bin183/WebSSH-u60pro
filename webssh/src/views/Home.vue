@@ -507,6 +507,7 @@
                     <el-button-group style="color:blue">
                       <el-button @click="listDir(data.sftp_current_dir, data.current_host)">进入</el-button>
                       <el-button @click="uploadFile(data.sftp_current_dir)">上传</el-button>
+                      <el-button @click="createFile(data.sftp_current_dir)">新建文件</el-button>
                       <el-button @click="createDir(data.sftp_current_dir, data.current_host)">创建目录</el-button>
                       <el-button @click="listDir(data.sftp_current_dir, data.current_host)">刷新</el-button>
                     </el-button-group>
@@ -554,6 +555,39 @@
                   </template>
                 </el-table-column>
               </el-table>
+            </el-dialog>
+
+            <el-dialog
+              v-model="data.compress_dialog_visible"
+              :title="'正在压缩: ' + data.compress_name"
+              width="92%"
+              style="max-width: 520px;"
+              custom-class="modern-dialog file-compress-dialog"
+              :close-on-click-modal="data.compress_status === 'exception'"
+              :close-on-press-escape="data.compress_status === 'exception'"
+              :show-close="data.compress_status === 'exception'"
+            >
+              <el-progress
+                :percentage="data.compress_percentage"
+                :status="data.compress_status === 'exception' ? 'exception' : data.compress_percentage >= 100 ? 'success' : undefined"
+                :stroke-width="12"
+                striped
+                striped-flow
+              />
+              <div class="compress-progress-text">
+                {{ data.compress_status_text }}
+              </div>
+              <template #footer>
+                <span class="dialog-footer">
+                  <el-button
+                    v-if="data.compress_status === 'exception'"
+                    type="primary"
+                    @click="data.compress_dialog_visible = false"
+                  >
+                    关闭
+                  </el-button>
+                </span>
+              </template>
             </el-dialog>
 
             <el-dialog
@@ -877,12 +911,17 @@ let data = reactive({
   modify_devices_dialog_visible: false,
   modify_pwd_dialog_visible: false,
   manage_dialog_visible: false,
+  compress_dialog_visible: false,
   extract_dialog_visible: false,
   permission_dialog_visible: false,
   editor_dialog_visible: false,
   dir_info: {} as DirInfo,
   sftp_current_dir: "",
   sftp_upload_percentage: 0,
+  compress_name: "",
+  compress_percentage: 0,
+  compress_status: "" as "" | "exception",
+  compress_status_text: "",
   extract_path: "",
   extract_file_name: "",
   extract_dst_path: "",
@@ -1677,7 +1716,47 @@ function isArchiveFile(file: FileInfo) {
   return archiveExtensions.some((ext) => lowerName.endsWith(ext));
 }
 
+let compressProgressTimer: ReturnType<typeof setInterval> | null = null;
+
+function stopCompressProgress() {
+  if (compressProgressTimer) {
+    clearInterval(compressProgressTimer);
+    compressProgressTimer = null;
+  }
+}
+
+function startCompressProgress(file: FileInfo) {
+  stopCompressProgress();
+  data.compress_name = file.name;
+  data.compress_percentage = 3;
+  data.compress_status = "";
+  data.compress_status_text = "正在准备压缩任务";
+  data.compress_dialog_visible = true;
+  compressProgressTimer = setInterval(() => {
+    if (data.compress_percentage < 90) {
+      data.compress_percentage += data.compress_percentage < 50 ? 4 : 2;
+      data.compress_status_text = "正在压缩目录, 请稍候";
+    }
+  }, 600);
+}
+
+function finishCompressProgress(success: boolean, message: string) {
+  stopCompressProgress();
+  if (success) {
+    data.compress_percentage = 100;
+    data.compress_status = "";
+    data.compress_status_text = message;
+    setTimeout(() => {
+      data.compress_dialog_visible = false;
+    }, 800);
+  } else {
+    data.compress_status = "exception";
+    data.compress_status_text = message;
+  }
+}
+
 function compressDir(file: FileInfo) {
+  startCompressProgress(file);
   let body = {
     "session_id": data.current_host.session_id,
     "path": file.path,
@@ -1685,11 +1764,14 @@ function compressDir(file: FileInfo) {
   axios.post<ResponseData>("/api/sftp/compress", body).then((ret) => {
     if (ret.data.code === 0) {
       listDir(data.sftp_current_dir, data.current_host);
+      finishCompressProgress(true, "压缩完成");
       ElMessage.success("压缩成功");
     } else {
+      finishCompressProgress(false, ret.data.msg || "压缩失败");
       ElMessage.error(ret.data.msg || "压缩失败");
     }
   }).catch(() => {
+    finishCompressProgress(false, "压缩异常");
     ElMessage.error("压缩异常");
   });
 }
@@ -1727,6 +1809,33 @@ function extractArchive() {
   }).finally(() => {
     data.extracting = false;
   });
+}
+
+async function createFile(dir: string) {
+  try {
+    const ret = await ElMessageBox.prompt("请输入文件名", "新建文件", {
+      confirmButtonText: "确定",
+      cancelButtonText: "取消",
+      inputPattern: /^(?!\s*$)[^/]+$/,
+      inputErrorMessage: "文件名不能为空, 且不能包含 /",
+    });
+    let fileName = String(ret.value || "").trim();
+    if (!fileName) {
+      return;
+    }
+    let body = {
+      "session_id": data.current_host.session_id,
+      "path": joinSftpPath(dir, fileName),
+    };
+    let response = await axios.post<ResponseData>("/api/sftp/create_file", body);
+    if (response.data.code === 0) {
+      listDir(data.sftp_current_dir, data.current_host);
+      ElMessage.success("创建文件成功");
+    } else {
+      ElMessage.error(response.data.msg || "创建文件失败");
+    }
+  } catch {
+  }
 }
 
 function modeToOctal(mode: string) {
@@ -2479,6 +2588,7 @@ onMounted(() => {
  */
 onBeforeUnmount(() => {
   clearInterval(statusSetInterval);
+  stopCompressProgress();
   stopUpdateStatusPolling();
   disconnectAllSession();
   window.removeEventListener("resize", updateWindowWidth);
@@ -2947,6 +3057,13 @@ const terminalBackground = computed(() => {
 
 .permission-check :deep(.el-checkbox__label) {
   display: none;
+}
+
+.compress-progress-text {
+  margin-top: 14px;
+  color: #606266;
+  font-size: 14px;
+  text-align: center;
 }
 
 @media (max-width: 768px) {

@@ -750,6 +750,7 @@ func main() {
 		auth.GET("/api/conn_manage/online_client", service.GetOnlineClient)
 		auth.PUT("/api/conn_manage/refresh_conn_time", service.RefreshConnTime)
 		auth.POST("/api/sftp/create_dir", service.SftpCreateDir)
+		auth.POST("/api/sftp/create_file", service.SftpCreateFile)
 		auth.POST("/api/sftp/list", service.SftpList)
 		auth.GET("/api/sftp/download", service.SftpDownLoad)
 		auth.PUT("/api/sftp/upload", service.SftpUpload)
