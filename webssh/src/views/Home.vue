@@ -518,7 +518,7 @@
 
               <el-row>
                 <el-col :span="24">
-                  <el-progress :percentage="data.sftp_upload_percentage" />
+                  <el-progress v-if="data.sftp_upload_visible" :percentage="data.sftp_upload_percentage" />
                 </el-col>
               </el-row>
 
@@ -918,6 +918,7 @@ let data = reactive({
   dir_info: {} as DirInfo,
   sftp_current_dir: "",
   sftp_upload_percentage: 0,
+  sftp_upload_visible: false,
   compress_name: "",
   compress_percentage: 0,
   compress_status: "" as "" | "exception",
@@ -1586,6 +1587,10 @@ function listDir(dir: string, h: Host) {
 function uploadFile(path: string) {
   data.sftp_upload_percentage = 0;
   function upload(fileList: FileList) {
+    if (fileList.length === 0) {
+      return;
+    }
+    data.sftp_upload_visible = true;
     let formData = new FormData();
     formData.append("session_id", data.current_host.session_id);
     formData.append("path", path);
@@ -1610,6 +1615,7 @@ function uploadFile(path: string) {
       }
     }).then((ret) => {
       if (ret.data.code === 0) {
+        data.sftp_upload_percentage = 100;
         // ElMessage.success(ret.data.msg);
         listDir(data.sftp_current_dir, data.current_host);
         let list = ret.data.data as Array<string>;
@@ -1631,6 +1637,11 @@ function uploadFile(path: string) {
       }
     }).catch(() => {
       ElMessage.error("上传异常");
+    }).finally(() => {
+      setTimeout(() => {
+        data.sftp_upload_visible = false;
+        data.sftp_upload_percentage = 0;
+      }, 800);
     });
   }
 
