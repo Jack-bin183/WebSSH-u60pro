@@ -508,7 +508,7 @@
                       <el-button @click="listDir(data.sftp_current_dir, data.current_host)">进入</el-button>
                       <el-button @click="uploadFile(data.sftp_current_dir)">上传</el-button>
                       <el-button @click="createFile(data.sftp_current_dir)">新建文件</el-button>
-                      <el-button @click="createDir(data.sftp_current_dir, data.current_host)">创建目录</el-button>
+                      <el-button @click="createDir(data.sftp_current_dir)">新建文件夹</el-button>
                       <el-button @click="listDir(data.sftp_current_dir, data.current_host)">刷新</el-button>
                     </el-button-group>
                   </template>
@@ -2002,19 +2002,31 @@ function saveEditor() {
 /**
  * SFTP创建目录
  */
-function createDir(dir: string, h: Host) {
-  let body = {
-    "session_id": h.session_id,
-    "path": dir
-  }
-  axios.post<ResponseData>("/api/sftp/create_dir", body).then((ret) => {
-    if (ret.data.code === 0) {
-      listDir(data.sftp_current_dir, data.current_host);
-      ElMessage.success("创建目录成功");
-    } else {
-      ElMessage.error("创建目录出错了");
+async function createDir(dir: string) {
+  try {
+    const ret = await ElMessageBox.prompt("请输入文件夹名", "新建文件夹", {
+      confirmButtonText: "确定",
+      cancelButtonText: "取消",
+      inputPattern: /^(?!\s*$)[^/]+$/,
+      inputErrorMessage: "文件夹名不能为空, 且不能包含 /",
+    });
+    let dirName = String(ret.value || "").trim();
+    if (!dirName) {
+      return;
     }
-  });
+    let body = {
+      "session_id": data.current_host.session_id,
+      "path": joinSftpPath(dir, dirName)
+    }
+    let response = await axios.post<ResponseData>("/api/sftp/create_dir", body);
+    if (response.data.code === 0) {
+      listDir(data.sftp_current_dir, data.current_host);
+      ElMessage.success("创建文件夹成功");
+    } else {
+      ElMessage.error(response.data.msg || "创建文件夹失败");
+    }
+  } catch {
+  }
 }
 
 /**
