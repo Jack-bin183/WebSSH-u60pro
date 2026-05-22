@@ -357,13 +357,6 @@ func (s *Server) computeSSHConfig() (*ssh.ServerConfig, error) {
 		return nil, s.matchKeys(key, ks)
 	}
 
-	// 注册BannerCallback(回调函数)
-	sc.BannerCallback = func(conn ssh.ConnMetadata) string {
-		// 写入自定义的横幅信息到客户端
-		return fmt.Sprintf("Welcome to the Go_SSH_Server\n=>user:(%s)\n=>remote addr:(%s)\n=>local  addr:(%s)\n=>client  ver:(%s)\n=>server  ver:(%s)\n\n",
-			conn.User(), conn.RemoteAddr().String(), conn.LocalAddr(),
-			conn.ClientVersion(), conn.ServerVersion())
-	}
 	sc.ServerVersion = "SSH-2.0-OpenSSH"
 	cf, err := s.cli.FindByID(1)
 	if err == nil {
