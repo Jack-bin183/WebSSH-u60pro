@@ -10,8 +10,8 @@
           </div>
         </h1>
         <div class="status-indicator">
-          <div :class="['status-dot', dataReady ? 'online' : 'offline']"></div>
-          <span class="status-text">{{ dataReady ? '已连接' : '未加载' }}</span>
+          <div :class="['status-dot', connectionStatusClass]"></div>
+          <span class="status-text">{{ connectionStatusText }}</span>
         </div>
       </div>
 
@@ -58,30 +58,46 @@
 
         <div class="auto-refresh-controls" style="display: flex;align-items: center;gap: 10px;flex-wrap: wrap;">
           <button
-            class="btn btn-primary":class="autoRefresh ? 'btn-success' : 'btn-secondary'"
+            class="quick-action-button"
+            :class="{ active: autoRefresh }"
             @click="toggleAutoRefresh"
           >
-            {{ autoRefresh ? '停止刷新' : '开始刷新' }}
+            <span class="quick-action-icon">{{ autoRefresh ? 'ON' : 'OFF' }}</span>
+            <span class="quick-action-copy">
+              <span class="quick-action-title">{{ autoRefresh ? '自动刷新中' : '自动刷新' }}</span>
+              <span class="quick-action-subtitle">{{ autoRefresh ? '点击停止刷新' : '点击开始刷新' }}</span>
+            </span>
           </button>
 
           <div class="auto-refresh-controls">
             <button 
-              class="btn"
-              :class="usbStatus?.connect == 1 ? 'btn-primary' : 'btn-disabled'" 
+              class="quick-action-button adb-action-button"
+              :class="{ active: usbStatus?.connect == 1 }"
               @click="handleOpenAdbClick" > 
-              开启ADB 
+              <span class="quick-action-icon">ADB</span>
+              <span class="quick-action-copy">
+                <span class="quick-action-title">开启 ADB</span>
+                <span class="quick-action-subtitle">{{ usbStatus?.connect == 1 ? 'USB 已连接' : '等待 USB 连接' }}</span>
+              </span>
             </button>
           </div>
 
         </div>
 
-        <!-- <div class="auto-refresh-controls" style="display: flex;align-items: center;gap: 5px;flex-wrap: wrap;">
-          WiFi:<span :class="wifiInfo.highPerformance ? 'hp' : 'psm'">{{ wifiModeText }}</span>
-          <button style="margin-left: 1px;" class="btn" :class="wifiInfo.highPerformance ? 'btn-primary' : 'btn-primary'"
-                  @click="psmSetHandler(!wifiInfo.highPerformance)" >
-            {{ wifiButtonText }}
+        <div class="auto-refresh-controls wifi-mode-controls">
+          <button
+            class="wifi-mode-button"
+            :class="{ active: wifiInfo.highPerformance, saving: wifiPsmSaving }"
+            :disabled="wifiPsmSaving"
+            @click="psmSetHandler(!wifiInfo.highPerformance)"
+          >
+            <span class="wifi-mode-icon">{{ wifiInfo.highPerformance ? 'HP' : 'PS' }}</span>
+            <span class="wifi-mode-copy">
+              <span class="wifi-mode-title">WiFi {{ wifiModeText }}</span>
+              <span class="wifi-mode-action">{{ wifiPsmSaving ? '切换中...' : wifiButtonText }}</span>
+            </span>
           </button>
-        </div> -->
+        </div>
         <div v-if="wifiStatus?.main2g_ssid !== wifiStatus?.main5g_ssid" class="auto-refresh-controls" style="display: flex;align-items: center;gap: 10px;flex-wrap: wrap;">
           2.4G-WIFI: {{wifiInfo.wifiStatus24?'开':'关'}}
           <button style="margin-left: 1px;" class="btn" :class="wifiInfo.wifiStatus24 ? 'btn-primary' : 'btn-primary'"
@@ -1412,7 +1428,8 @@ interface WifiInfo {
 }
 const wifiInfo = ref<WifiInfo>({} as WifiInfo);
 const wifiModeText = computed(() => wifiInfo.value.highPerformance ? '性能模式' : '省电模式')
-const wifiButtonText = computed(() => wifiInfo.value.highPerformance ? '切换为省电' : '切换高性能')
+const wifiButtonText = computed(() => wifiInfo.value.highPerformance ? '点击切换省电' : '点击切换高性能')
+const wifiPsmSaving = ref(false)
 
 interface WifiStatus {
   dfs_status: string,
@@ -1502,6 +1519,8 @@ const netAmbr = ref<NetAmbr>({
 const loading = ref(false);
 const error = ref<string | null>(null);
 const data = ref<NetInfoResult | null>(null);
+const connectionOk = ref(false);
+const connectionLoaded = ref(false);
 const lanData = ref<NetworkInterface>({} as NetworkInterface);
 const wanData = ref<NetworkInterface>({} as NetworkInterface);
 const wan6Data = ref<NetworkInterface>({} as NetworkInterface);
@@ -1925,6 +1944,17 @@ const batchRequests2 = [
 
 // 计算属性
 const dataReady = computed(() => !!data.value);
+const connectionStatusClass = computed(() => {
+  if (connectionOk.value) return 'online';
+  if (loading.value || !connectionLoaded.value) return 'pending';
+  return 'offline';
+});
+const connectionStatusText = computed(() => {
+  if (connectionOk.value) return '已连接';
+  if (loading.value && !connectionLoaded.value) return '连接中';
+  if (connectionLoaded.value) return '连接失败';
+  return '未加载';
+});
 const d = computed(() => data.value || {});
 
 const signalBars = computed(() => {
@@ -2400,6 +2430,9 @@ async function fetchAllData() {
   error.value = null
   try {
     const resultMap = await callUbusBatch(batchRequests)
+    if (!resultMap[1]) {
+      throw new Error('关键状态数据缺失')
+    }
     // 按 id 取值（清晰又稳定）
     data.value        = resultMap[1]
     lanData.value     = resultMap[2]
@@ -2413,12 +2446,15 @@ async function fetchAllData() {
     // wwanInfo.value    = resultMap[10]
     // lanUserList.value = resultMap[11]
     wifiStatus.value = resultMap[14]
-    sysVersion.value = resultMap[15]['values']
-    usbStatus.value = resultMap[16]
+    sysVersion.value = resultMap[15]?.values ?? sysVersion.value
+    usbStatus.value = resultMap[16] ?? usbStatus.value
+    connectionOk.value = true
   } catch (e: any) {
+    connectionOk.value = false
     error.value = e?.message || '请求失败'
     console.error('数据获取失败:', e)
   } finally {
+    connectionLoaded.value = true
     loading.value = false
   }
 }
@@ -2582,12 +2618,16 @@ function psmGetHandler() {
     })
 }
 function psmSetHandler(val:boolean){
+  if (wifiPsmSaving.value) return;
+  wifiPsmSaving.value = true;
   axios.post('/api/wifi/psm/set', {
     ifaces: ['wlan0', 'wlan1', 'wlan2', 'wlan3'],
     mode: val ? 'off' : 'on',
   }).then((res) => {
     psmGetHandler()
     ElMessage.success('WiFi已切换为:' + (val ? '高性能模式(据说会降低WiFi延迟)' : '省电模式'));
+  }).finally(() => {
+    wifiPsmSaving.value = false;
   });
 }
 function wifiStateSetHandler(iface:string, val:boolean){
@@ -2726,6 +2766,10 @@ onUnmounted(() => {
   background: #48bb78;
 }
 
+.status-dot.pending {
+  background: #f6ad55;
+}
+
 .status-dot.offline {
   background: #e53e3e;
 }
@@ -2757,6 +2801,108 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 12px;
+}
+
+.wifi-mode-controls {
+  gap: 0;
+}
+
+.quick-action-button,
+.wifi-mode-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 42px;
+  max-width: 100%;
+  padding: 6px 10px 6px 10px;
+  border: 1px solid rgba(125, 211, 252, 0.35);
+  border-radius: 8px;
+  color: rgba(255, 255, 255, 0.92);
+  background: rgba(14, 165, 233, 0.18);
+  box-shadow: 0 6px 18px rgba(14, 116, 144, 0.18);
+  cursor: pointer;
+  transition: transform 0.2s ease, border-color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
+}
+
+.quick-action-button.active {
+  border-color: rgba(74, 222, 128, 0.45);
+  background: linear-gradient(135deg, rgba(34, 197, 94, 0.26), rgba(14, 165, 233, 0.18));
+  box-shadow: 0 6px 18px rgba(34, 197, 94, 0.18);
+}
+
+.adb-action-button.active {
+  border-color: rgba(96, 165, 250, 0.5);
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.28), rgba(14, 165, 233, 0.2));
+  box-shadow: 0 6px 18px rgba(37, 99, 235, 0.2);
+}
+
+.wifi-mode-button.active {
+  border-color: rgba(251, 191, 36, 0.48);
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.28), rgba(14, 165, 233, 0.2));
+  box-shadow: 0 6px 18px rgba(245, 158, 11, 0.2);
+}
+
+.quick-action-button:hover:not(:disabled),
+.wifi-mode-button:hover:not(:disabled) {
+  transform: translateY(-2px);
+  border-color: rgba(255, 255, 255, 0.55);
+  box-shadow: 0 10px 22px rgba(15, 23, 42, 0.24);
+}
+
+.quick-action-button:disabled,
+.wifi-mode-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.72;
+}
+
+.quick-action-button:focus-visible,
+.wifi-mode-button:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.5);
+  outline-offset: 2px;
+}
+
+.wifi-mode-button.saving .wifi-mode-icon {
+  animation: pulse 1s ease-in-out infinite;
+}
+
+.quick-action-icon,
+.wifi-mode-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  font-size: 11px;
+  font-weight: 800;
+  color: #0f172a;
+  background: rgba(255, 255, 255, 0.9);
+}
+
+.quick-action-copy,
+.wifi-mode-copy {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 0;
+  line-height: 1.15;
+}
+
+.quick-action-title,
+.wifi-mode-title {
+  font-size: 14px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.quick-action-subtitle,
+.wifi-mode-action {
+  margin-top: 3px;
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.72);
+  white-space: nowrap;
 }
 
 .checkbox-label {
