@@ -34,7 +34,7 @@
                       </template>
 
                       <p class="init-tip">
-                        U60Pro 版本只使用本地 SQLite，默认数据库文件为gowebssh.db，会保存在程序启动目录下。（先 cd 到目录，再运行程序）
+                        U60Pro 版本只使用本地 SQLite，默认数据库文件为gowebssh.db，会保存在程序启动目录下。（通常需要先 cd 到目录，再运行程序）
                       </p>
                       <el-input v-model="form.sqlite_dbdsn" minlength="2" maxlength="255" show-word-limit clearable
                         placeholder="数据库文件名，例如 gowebssh.db">

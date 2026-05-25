@@ -44,3 +44,4 @@ npm run build \
 
 然后把 webssh 上传即可
 
+通常需要先 cd 到目录，再使用 ./webssh 运行程序，因为 SqlLite 数据库文件会存储在运行目录
