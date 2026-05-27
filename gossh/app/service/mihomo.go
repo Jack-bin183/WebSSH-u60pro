@@ -182,9 +182,9 @@ func buildMihomoTryURLs(originalURL string, proxies []string) []string {
 // ─────────────────────────── 代理测速 ───────────────────────────
 
 const (
-	proxyProbeMaxBytes  int64         = 100 * 1024
-	proxyProbeTimeout   time.Duration = 3 * time.Second
-	proxyRankCacheTTL   time.Duration = 60 * time.Second
+	proxyProbeMaxBytes int64         = 100 * 1024
+	proxyProbeTimeout  time.Duration = 3 * time.Second
+	proxyRankCacheTTL  time.Duration = 60 * time.Second
 )
 
 type proxyRankCacheEntry struct {
@@ -517,34 +517,44 @@ func checkMihomoAPI(configPath string) (reachable bool, version string) {
 	if extCtrl == "" {
 		return false, ""
 	}
+
+	// 没 scheme 时补 http://
+	if !strings.Contains(extCtrl, "://") {
+		extCtrl = "http://" + extCtrl
+	}
+
 	u, err := url.Parse(extCtrl)
-	if err != nil || u == nil {
+	if err != nil {
 		return false, ""
 	}
-	host := u.Host
-	if host == "" {
-		// extCtrl 没有 scheme，url.Parse 把 host 解析进了 Scheme/Opaque
-		// 直接把整段当 host:port 用
-		host = strings.SplitN(extCtrl, "/", 2)[0]
-	}
-	reqURL := "http://" + host + "/version"
+
+	reqURL := u.Scheme + "://" + u.Host + "/version"
+
 	req, err := http.NewRequest(http.MethodGet, reqURL, nil)
 	if err != nil {
 		return false, ""
 	}
+
 	if secret != "" {
 		req.Header.Set("Authorization", "Bearer "+secret)
 	}
-	client := &http.Client{Timeout: 2 * time.Second}
+
+	client := &http.Client{
+		Timeout: 2 * time.Second,
+	}
+
 	resp, err := client.Do(req)
 	if err != nil {
 		return false, ""
 	}
 	defer resp.Body.Close()
+
 	if resp.StatusCode != http.StatusOK {
 		return false, ""
 	}
+
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+
 	return true, strings.TrimSpace(string(body))
 }
 

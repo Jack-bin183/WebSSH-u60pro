@@ -1293,7 +1293,7 @@
             <div class="mh-info-item">
               <span class="mh-info-label">控制面板</span>
               <a
-                v-if="mihomoStatus.external_controller"
+                v-if="mihomoStatus.api_version"
                 :href="'http://' + mihomoStatus.external_controller"
                 target="_blank"
                 style="text-decoration: none; color: blue;"
