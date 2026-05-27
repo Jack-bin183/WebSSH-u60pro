@@ -1,0 +1,111 @@
+name: 更新 Mihomo 数据文件
+
+on:
+  schedule:
+    - cron: '0 2 * * *'   # 每天 UTC 02:00 自动运行
+  workflow_dispatch:        # 支持手动触发
+
+permissions:
+  contents: write
+
+jobs:
+  update-data:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 检出仓库（获取 mm.sh）
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            mihomo/mm.sh
+          sparse-checkout-cone-mode: false
+
+      - name: 下载数据文件 + Mihomo 二进制
+        run: |
+          set -e
+
+          echo ">>> 下载 chnroute IPv4..."
+          curl -fsSL "https://raw.githubusercontent.com/gaoyifan/china-operator-ip/ip-lists/china.txt" -o chnroute.txt
+
+          echo ">>> 下载 chnroute IPv6..."
+          curl -fsSL "https://raw.githubusercontent.com/gaoyifan/china-operator-ip/ip-lists/china6.txt" -o chnroute6.txt
+
+          echo ">>> 下载 GeoSite.dat..."
+          curl -fsSL -L "https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geosite.dat" -o GeoSite.dat
+
+          echo ">>> 下载 geoip.metadb..."
+          curl -fsSL -L "https://github.com/MetaCubeX/meta-rules-dat/releases/latest/download/geoip.metadb" -o geoip.metadb
+
+          echo ">>> 获取 Mihomo 最新版本号..."
+          MIHOMO_VERSION=$(curl -fsSL "https://api.github.com/repos/MetaCubeX/mihomo/releases/latest" \
+            | grep '"tag_name"' | head -1 | sed 's/.*"tag_name": "\(.*\)".*/\1/')
+          if [ -z "$MIHOMO_VERSION" ]; then
+            echo "获取 mihomo 版本失败，终止"
+            exit 1
+          fi
+          echo "Mihomo 版本: $MIHOMO_VERSION"
+
+          echo ">>> 下载 mihomo ARM64 二进制..."
+          MIHOMO_URL="https://github.com/MetaCubeX/mihomo/releases/download/${MIHOMO_VERSION}/mihomo-linux-arm64-${MIHOMO_VERSION}.gz"
+          curl -fsSL -L "$MIHOMO_URL" -o mihomo-linux-arm64.gz
+          gunzip -f mihomo-linux-arm64.gz
+          chmod +x mihomo-linux-arm64
+          ls -lh mihomo-linux-arm64
+
+          echo "$MIHOMO_VERSION" > mihomo_version.txt
+
+          DATA_VERSION="$(date -u '+%Y%m%d_%H%M')"
+          echo "$DATA_VERSION" > data_version.txt
+
+          # 复制 mm.sh（若 checkout 时不存在则跳过）
+          if [ -f "mihomo/mm.sh" ]; then
+            cp mihomo/mm.sh mm.sh
+            chmod +x mm.sh
+            echo "已包含 mm.sh"
+          else
+            echo "警告：mihomo/mm.sh 不存在，跳过"
+          fi
+
+          echo ""
+          echo "数据版本号: $DATA_VERSION"
+          echo "Mihomo 版本: $MIHOMO_VERSION"
+          echo "文件列表:"
+          ls -lh chnroute.txt chnroute6.txt GeoSite.dat geoip.metadb \
+                 data_version.txt mihomo-linux-arm64 mihomo_version.txt \
+                 mm.sh 2>/dev/null || true
+
+      - name: 发布到 Release (tag: latest-data)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest-data
+          name: "Mihomo 数据文件（每日自动更新）"
+          body: |
+            自动更新的 mihomo 透明代理数据文件及二进制，每日 UTC 02:00 更新，也可在 WebSSH 管理界面中手动触发更新。
+
+            | 文件 | 说明 |
+            |---|---|
+            | `chnroute.txt` | 中国 IPv4 地址段，用于 ipset 直连绕过 |
+            | `chnroute6.txt` | 中国 IPv6 地址段 |
+            | `GeoSite.dat` | 地理站点规则数据库（mihomo GEOSITE 规则）|
+            | `geoip.metadb` | 地理 IP 规则数据库（mihomo GEOIP 规则）|
+            | `data_version.txt` | 数据版本号，格式：`YYYYMMDD_HHMM` |
+            | `mihomo-linux-arm64` | Mihomo ARM64 可执行文件 |
+            | `mihomo_version.txt` | Mihomo 二进制版本号 |
+            | `mm.sh` | Mihomo 启动/控制脚本 |
+
+            数据来源：
+            - IPv4/IPv6 路由表：[gaoyifan/china-operator-ip](https://github.com/gaoyifan/china-operator-ip)
+            - GeoSite：[Loyalsoldier/v2ray-rules-dat](https://github.com/Loyalsoldier/v2ray-rules-dat)
+            - GeoIP：[MetaCubeX/meta-rules-dat](https://github.com/MetaCubeX/meta-rules-dat)
+            - Mihomo：[MetaCubeX/mihomo](https://github.com/MetaCubeX/mihomo)
+          files: |
+            chnroute.txt
+            chnroute6.txt
+            GeoSite.dat
+            geoip.metadb
+            data_version.txt
+            mihomo-linux-arm64
+            mihomo_version.txt
+            mm.sh
+          prerelease: false
+          make_latest: false

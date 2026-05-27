@@ -962,6 +962,25 @@ func main() {
 		auth.POST("/api/openadb", OpenAdbHandler)
 	}
 
+	{ // Mihomo 透明代理管理
+		auth.GET("/api/mihomo/status", service.MihomoStatusHandler)
+		auth.GET("/api/mihomo/dir", service.MihomoGetDirHandler)
+		auth.POST("/api/mihomo/control", service.MihomoControlHandler)
+		auth.GET("/api/mihomo/data/version", service.MihomoDataVersionHandler)
+		auth.POST("/api/mihomo/data/update", service.MihomoDataUpdateHandler)
+		auth.GET("/api/mihomo/data/update/status", service.MihomoDataUpdateStatusHandler)
+		auth.POST("/api/mihomo/data/update/cancel", service.MihomoDataUpdateCancelHandler)
+		// 二进制安装管理
+		auth.GET("/api/mihomo/binary/version", service.MihomoCheckBinaryVersionHandler)
+		auth.GET("/api/mihomo/install/status", service.MihomoInstallStatusHandler)
+		auth.POST("/api/mihomo/install/cancel", service.MihomoInstallCancelHandler)
+		auth.POST("/api/mihomo/install", service.MihomoInstallHandler)
+		auth.POST("/api/mihomo/uninstall", service.MihomoUninstallHandler)
+		// 配置文件管理
+		auth.GET("/api/mihomo/config", service.MihomoGetConfigHandler)
+		auth.PUT("/api/mihomo/config", service.MihomoSaveConfigHandler)
+	}
+
 	address := fmt.Sprintf("%s:%s", config.DefaultConfig.Address, config.DefaultConfig.Port)
 	_, certErr := os.Open(config.DefaultConfig.CertFile)
 	_, keyErr := os.Open(config.DefaultConfig.KeyFile)

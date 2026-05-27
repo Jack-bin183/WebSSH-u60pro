@@ -70,10 +70,10 @@
           </button>
 
           <div class="auto-refresh-controls">
-            <button 
+            <button
               class="quick-action-button adb-action-button"
               :class="{ active: usbStatus?.connect == 1 }"
-              @click="handleOpenAdbClick" > 
+              @click="handleOpenAdbClick" >
               <span class="quick-action-icon">ADB</span>
               <span class="quick-action-copy">
                 <span class="quick-action-title">开启 ADB</span>
@@ -84,7 +84,18 @@
 
         </div>
 
-        <div class="auto-refresh-controls wifi-mode-controls">
+        <div class="auto-refresh-controls" style="display: flex;align-items: center;gap: 10px;flex-wrap: wrap;">
+          <button
+              class="quick-action-button mihomo-action-button"
+              :class="{ active: mihomoStatus.running }"
+              @click="openMihomoDialog">
+              <span class="quick-action-icon">MH</span>
+              <span class="quick-action-copy">
+                <span class="quick-action-title">Mihomo</span>
+                <span class="quick-action-subtitle">{{ mihomoStatus.running ? '代理运行中' : '代理已停止' }}</span>
+              </span>
+            </button>
+
           <button
             class="wifi-mode-button"
             :class="{ active: wifiInfo.highPerformance, saving: wifiPsmSaving }"
@@ -98,6 +109,7 @@
             </span>
           </button>
         </div>
+        
         <div v-if="wifiStatus?.main2g_ssid !== wifiStatus?.main5g_ssid" class="auto-refresh-controls" style="display: flex;align-items: center;gap: 10px;flex-wrap: wrap;">
           2.4G-WIFI: {{wifiInfo.wifiStatus24?'开':'关'}}
           <button style="margin-left: 1px;" class="btn" :class="wifiInfo.wifiStatus24 ? 'btn-primary' : 'btn-primary'"
@@ -1244,6 +1256,203 @@
     </div>
     </div>
   </div>
+
+  <!-- ───────── Mihomo 管理弹窗 ───────── -->
+  <el-dialog
+    v-model="mihomoDialogVisible"
+    title="Mihomo 代理管理"
+    width="min(760px, 96vw)"
+    :close-on-click-modal="true"
+    destroy-on-close
+    class="mihomo-dialog">
+
+    <el-tabs v-model="mihomoActiveTab" type="border-card" class="mihomo-tabs">
+
+      <!-- ── Tab 1: 总览 ── -->
+      <el-tab-pane label="总览" name="overview">
+        <!-- 状态卡片 -->
+        <div class="mh-status-card">
+          <div class="mh-status-row">
+            <el-tag :type="mihomoStatus.running ? 'success' : 'info'" size="large" effect="dark">
+              {{ mihomoStatus.running ? '● 运行中' : '○ 已停止' }}
+            </el-tag>
+            <span v-if="mihomoStatus.running" class="mh-meta">PID {{ mihomoStatus.pid }}</span>
+            <span v-if="mihomoStatus.running && mihomoStatus.start_time" class="mh-meta">启动于 {{ mihomoStatus.start_time }}</span>
+            <span class="mh-meta mh-dir">{{ mihomoStatus.mihomo_dir }}</span>
+          </div>
+          <div class="mh-info-grid">
+            <div class="mh-info-item">
+              <span class="mh-info-label">二进制版本</span>
+              <span class="mh-info-value">{{ mihomoStatus.binary_version || '未安装' }}</span>
+            </div>
+            <div class="mh-info-item">
+              <span class="mh-info-label">API 状态</span>
+              <el-tag v-if="mihomoStatus.running" :type="mihomoStatus.api_reachable ? 'success' : 'warning'" size="small">
+                {{ mihomoStatus.api_reachable ? '可访问' : '不可达' }}
+              </el-tag>
+              <span v-else class="mh-info-value">—</span>
+            </div>
+            <div class="mh-info-item">
+              <span class="mh-info-label">API 版本</span>
+              <span class="mh-info-value">{{ mihomoStatus.api_version || '—' }}</span>
+            </div>
+            <div class="mh-info-item">
+              <span class="mh-info-label">外部控制器</span>
+              <span class="mh-info-value">{{ mihomoStatus.external_controller || '—' }}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 控制按钮 -->
+        <div class="mh-control-row">
+          <el-button-group>
+            <el-button type="success" :loading="mihomoControlling==='start'" @click="mihomoControl('start')">启动</el-button>
+            <el-button type="warning" :loading="mihomoControlling==='restart'" @click="mihomoControl('restart')">重启</el-button>
+            <el-button type="danger" :loading="mihomoControlling==='stop'" @click="mihomoControl('stop')">停止</el-button>
+            <el-button :loading="mihomoControlling==='reload-ipset'" @click="mihomoControl('reload-ipset')">重载 ipset</el-button>
+          </el-button-group>
+          <el-button :icon="RefreshIcon" @click="loadMihomoStatus" :loading="mihomoLoadingStatus">刷新</el-button>
+        </div>
+        <transition name="el-fade-in">
+          <pre v-if="mihomoControlOutput" class="mh-output">{{ mihomoControlOutput }}</pre>
+        </transition>
+      </el-tab-pane>
+
+      <!-- ── Tab 2: 数据更新 ── -->
+      <el-tab-pane label="数据更新" name="data">
+        <div class="mh-data-header">
+          <div class="mh-version-row">
+            <span v-if="mihomoVersionInfo.remote_version" class="mh-meta">
+              远端：{{ mihomoVersionInfo.remote_version }}&nbsp;|&nbsp;本地：{{ mihomoStatus.local_version || '未知' }}
+            </span>
+            <el-tag v-if="mihomoVersionInfo.has_update" type="warning" size="small">有更新</el-tag>
+            <el-tag v-else-if="mihomoVersionInfo.remote_version && !mihomoVersionInfo.has_update" type="success" size="small">已最新</el-tag>
+          </div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+            <el-button size="small" @click="checkMihomoVersion" :loading="mihomoCheckingVersion">检查更新</el-button>
+            <el-button size="small" type="primary"
+              :loading="mihomoUpdateStatus.state==='downloading'"
+              :disabled="mihomoUpdateStatus.state==='downloading'"
+              @click="startMihomoUpdate">一键更新</el-button>
+            <el-button v-if="mihomoUpdateStatus.state==='downloading'" size="small" type="danger" @click="cancelMihomoUpdate">取消</el-button>
+          </div>
+        </div>
+
+        <div v-if="['downloading','done','failed','canceled'].includes(mihomoUpdateStatus.state)" class="mh-progress-area">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+            <el-tag :type="mihomoUpdateTagType" size="small">{{ mihomoUpdateLabel }}</el-tag>
+            <span style="font-size:12px;color:#606266">{{ mihomoUpdateStatus.msg }}</span>
+          </div>
+          <el-progress
+            v-if="mihomoUpdateStatus.state==='downloading'"
+            :percentage="mihomoUpdateStatus.percent"
+            :format="() => `${mihomoUpdateStatus.percent}%  ${mihomoUpdateStatus.file_name} [${mihomoUpdateStatus.file_index}/${mihomoUpdateStatus.file_total}]`"
+            striped striped-flow :duration="10" />
+        </div>
+
+        <div class="mh-table-wrap">
+          <el-table :data="mihomoStatus.files" size="small" style="width:100%;margin-top:10px">
+            <el-table-column prop="name" label="文件" width="140" />
+            <el-table-column prop="desc" label="说明" min-width="80" />
+            <el-table-column label="状态" width="64">
+              <template #default="scope">
+                <el-tag :type="scope.row.exists ? 'success' : 'danger'" size="small">{{ scope.row.exists ? '存在' : '缺失' }}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="大小" width="76">
+              <template #default="scope">{{ scope.row.exists ? formatMihomoSize(scope.row.size) : '—' }}</template>
+            </el-table-column>
+            <el-table-column label="修改时间" width="150" class-name="mh-col-time">
+              <template #default="scope">
+                <span style="font-size:12px">{{ scope.row.exists ? scope.row.mod_time : '—' }}</span>
+              </template>
+            </el-table-column>
+          </el-table>
+        </div>
+      </el-tab-pane>
+
+      <!-- ── Tab 3: 配置文件 ── -->
+      <el-tab-pane label="配置文件" name="config">
+        <div class="mh-config-toolbar">
+          <span class="mh-meta">{{ mihomoStatus.mihomo_dir }}/config.yaml</span>
+          <div style="display:flex;gap:6px">
+            <el-button size="small" :icon="RefreshIcon" @click="loadMihomoConfig" :loading="mihomoConfigLoading">重新加载</el-button>
+            <el-button size="small" type="primary" @click="saveMihomoConfig" :loading="mihomoConfigSaving">保存</el-button>
+          </div>
+        </div>
+        <div v-if="mihomoConfigError" class="mh-config-error">{{ mihomoConfigError }}</div>
+        <textarea
+          v-model="mihomoConfigText"
+          class="mh-config-editor"
+          spellcheck="false"
+          placeholder="配置文件内容将在此显示..." />
+      </el-tab-pane>
+
+      <!-- ── Tab 4: 安装管理 ── -->
+      <el-tab-pane label="安装管理" name="install">
+        <!-- 版本信息 -->
+        <div class="mh-install-version-card">
+          <div class="mh-info-grid">
+            <div class="mh-info-item">
+              <span class="mh-info-label">已安装版本</span>
+              <span class="mh-info-value">{{ mihomoStatus.binary_version || '未安装' }}</span>
+            </div>
+            <div class="mh-info-item">
+              <span class="mh-info-label">远端最新版本</span>
+              <span class="mh-info-value">{{ mihomoBinaryVersionInfo.remote_version || '—' }}</span>
+            </div>
+            <div class="mh-info-item">
+              <span class="mh-info-label">安装目录</span>
+              <span class="mh-info-value">/data/kano_plugins/mihomo</span>
+            </div>
+            <div class="mh-info-item">
+              <el-tag v-if="mihomoBinaryVersionInfo.has_update" type="warning" size="small">有新版本</el-tag>
+              <el-tag v-else-if="mihomoBinaryVersionInfo.remote_version && !mihomoBinaryVersionInfo.has_update" type="success" size="small">已是最新</el-tag>
+            </div>
+          </div>
+          <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
+            <el-button size="small" @click="checkMihomoBinaryVersion" :loading="mihomoBinaryChecking">检查版本</el-button>
+            <el-button size="small" type="primary"
+              :loading="mihomoInstallStatus.state==='downloading'"
+              :disabled="mihomoInstallStatus.state==='downloading'"
+              @click="startMihomoInstall">
+              {{ mihomoStatus.binary_version ? '更新二进制' : '安装 Mihomo' }}
+            </el-button>
+            <el-button v-if="mihomoInstallStatus.state==='downloading'" size="small" type="danger" @click="cancelMihomoInstall">取消</el-button>
+          </div>
+        </div>
+
+        <!-- 安装进度 -->
+        <div v-if="['downloading','done','failed','canceled'].includes(mihomoInstallStatus.state)" class="mh-progress-area" style="margin-top:12px">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+            <el-tag :type="mihomoInstallTagType" size="small">{{ mihomoInstallLabel }}</el-tag>
+            <span style="font-size:12px;color:#606266">{{ mihomoInstallStatus.msg }}</span>
+          </div>
+          <el-progress
+            v-if="mihomoInstallStatus.state==='downloading'"
+            :percentage="mihomoInstallStatus.percent"
+            striped striped-flow :duration="10" />
+        </div>
+
+        <!-- 卸载区 -->
+        <el-divider style="margin:16px 0 10px">卸载</el-divider>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <el-button size="small" type="warning" @click="uninstallMihomo('soft')" :loading="mihomoUninstalling==='soft'">
+            软卸载（仅删除二进制）
+          </el-button>
+          <el-button size="small" type="danger" @click="uninstallMihomo('full')" :loading="mihomoUninstalling==='full'">
+            完全卸载（删除全部文件）
+          </el-button>
+        </div>
+      </el-tab-pane>
+
+    </el-tabs>
+
+    <template #footer>
+      <el-button @click="mihomoDialogVisible = false">关闭</el-button>
+    </template>
+  </el-dialog>
+
 </template>
 
 <script setup lang="ts">
@@ -1252,9 +1461,10 @@ import DashboardIcon from '@/assets/svgs/dashboard.svg';
 import InterfaceIcon from '@/assets/svgs/interface.svg';
 import InternetIcon from '@/assets/svgs/internet.svg';
 import NetworkIcon from '@/assets/svgs/network.svg';
+import { Refresh as RefreshIcon } from '@element-plus/icons-vue';
 import axios from 'axios';
-import { ElMessage, ElNotification } from 'element-plus';
-import { computed, onMounted, onUnmounted, ref } from 'vue';
+import { ElMessage, ElMessageBox, ElNotification } from 'element-plus';
+import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 
 // interface UbusResponse<T = any> {
 //   code: number;
@@ -2561,19 +2771,339 @@ function oneClickDebug() {
     })
 }
 
-// function oneClickDebugClose() {
-//   ElMessage.info('正在执行操作，请稍候...')
-//   callUbusBatch([closeAdbRequest])
-//       .then((map) => {
-//         // 一秒后执行刷新，确保后端状态更新
-//         setTimeout(() => {
-//             ElMessage.success('已关闭ADB调试模式')
-//         }, 1500);
-//       })
-//       .catch((err) => {
-//         ElMessage.error('请求失败：' + (err?.message || '未知错误'))
-//       })
-// }
+// function oneClickDebugClose() { ... }
+
+// ─────────────────────────── Mihomo ───────────────────────────
+
+interface MihomoFileInfo { name: string; desc: string; exists: boolean; size: number; mod_time: string }
+interface MihomoStatusData {
+  running: boolean; pid: number; mihomo_dir: string; local_version: string; files: MihomoFileInfo[]
+  binary_version: string; start_time: string; api_reachable: boolean; api_version: string; external_controller: string
+}
+interface MihomoVersionData { remote_version: string; local_version: string; has_update: boolean }
+interface MihomoUpdateStatusData {
+  state: string; msg: string; file_name: string; file_index: number
+  file_total: number; downloaded: number; total: number; percent: number
+}
+interface MihomoInstallStatusData {
+  state: string; msg: string; downloaded: number; total: number; percent: number
+}
+
+const mihomoDialogVisible = ref(false)
+const mihomoActiveTab = ref('overview')
+const mihomoLoadingStatus = ref(false)
+const mihomoControlling = ref('')
+const mihomoControlOutput = ref('')
+const mihomoCheckingVersion = ref(false)
+const mihomoBinaryChecking = ref(false)
+const mihomoConfigLoading = ref(false)
+const mihomoConfigSaving = ref(false)
+const mihomoConfigText = ref('')
+const mihomoConfigError = ref('')
+const mihomoUninstalling = ref('')
+let mihomoUpdatePollTimer: ReturnType<typeof setInterval> | null = null
+let mihomoInstallPollTimer: ReturnType<typeof setInterval> | null = null
+
+const mihomoStatus = reactive<MihomoStatusData>({
+  running: false, pid: 0, mihomo_dir: '/data/kano_plugins/mihomo', local_version: '',
+  files: [], binary_version: '', start_time: '', api_reachable: false, api_version: '', external_controller: ''
+})
+const mihomoVersionInfo = reactive<MihomoVersionData>({
+  remote_version: '', local_version: '', has_update: false
+})
+const mihomoUpdateStatus = reactive<MihomoUpdateStatusData>({
+  state: 'idle', msg: '', file_name: '', file_index: 0, file_total: 0, downloaded: 0, total: 0, percent: 0
+})
+const mihomoBinaryVersionInfo = reactive<MihomoVersionData>({
+  remote_version: '', local_version: '', has_update: false
+})
+const mihomoInstallStatus = reactive<MihomoInstallStatusData>({
+  state: 'idle', msg: '', downloaded: 0, total: 0, percent: 0
+})
+
+const mihomoUpdateLabel = computed(() => (({
+  downloading: '下载中', done: '已完成', failed: '失败', canceled: '已取消'
+} as Record<string, string>)[mihomoUpdateStatus.state] ?? mihomoUpdateStatus.state))
+
+const mihomoUpdateTagType = computed(() => (({
+  downloading: 'primary', done: 'success', failed: 'danger', canceled: 'info'
+} as Record<string, string>)[mihomoUpdateStatus.state] ?? 'info') as any)
+
+const mihomoInstallLabel = computed(() => (({
+  downloading: '下载中', done: '已完成', failed: '失败', canceled: '已取消'
+} as Record<string, string>)[mihomoInstallStatus.state] ?? mihomoInstallStatus.state))
+
+const mihomoInstallTagType = computed(() => (({
+  downloading: 'primary', done: 'success', failed: 'danger', canceled: 'info'
+} as Record<string, string>)[mihomoInstallStatus.state] ?? 'info') as any)
+
+async function loadMihomoStatus() {
+  mihomoLoadingStatus.value = true
+  try {
+    const res = await axios.get('/api/mihomo/status')
+    if (res.data.code === 0) Object.assign(mihomoStatus, res.data.data)
+  } catch { /* ignore */ } finally {
+    mihomoLoadingStatus.value = false
+  }
+}
+
+function openMihomoDialog() {
+  mihomoDialogVisible.value = true
+  mihomoActiveTab.value = 'overview'
+  loadMihomoStatus()
+  // 若后台有数据更新任务在跑，恢复轮询
+  axios.get('/api/mihomo/data/update/status').then(res => {
+    if (res.data.code === 0) {
+      Object.assign(mihomoUpdateStatus, res.data.data)
+      if (mihomoUpdateStatus.state === 'downloading') startMihomoUpdatePoll()
+    }
+  }).catch(() => {})
+  // 若后台有安装任务在跑，恢复轮询
+  axios.get('/api/mihomo/install/status').then(res => {
+    if (res.data.code === 0) {
+      Object.assign(mihomoInstallStatus, res.data.data)
+      if (mihomoInstallStatus.state === 'downloading') startMihomoInstallPoll()
+    }
+  }).catch(() => {})
+}
+
+// 切换到配置文件 tab 时自动加载
+watch(mihomoActiveTab, (tab) => {
+  if (tab === 'config' && mihomoConfigText.value === '') {
+    loadMihomoConfig()
+  }
+})
+
+async function mihomoControl(action: string) {
+  mihomoControlling.value = action
+  mihomoControlOutput.value = ''
+  try {
+    const res = await axios.post('/api/mihomo/control', { action })
+    if (res.data.code === 0) {
+      ElMessage.success(action + ' 成功')
+      mihomoControlOutput.value = (res.data.output ?? '').trim()
+    } else {
+      ElMessage.error(res.data.msg)
+      mihomoControlOutput.value = (res.data.output ?? res.data.msg ?? '').trim()
+    }
+    await loadMihomoStatus()
+  } catch (e: any) {
+    ElMessage.error('请求失败: ' + (e.message ?? e))
+  } finally {
+    mihomoControlling.value = ''
+  }
+}
+
+async function checkMihomoVersion() {
+  mihomoCheckingVersion.value = true
+  try {
+    const res = await axios.get('/api/mihomo/data/version')
+    if (res.data.code === 0) {
+      Object.assign(mihomoVersionInfo, res.data.data)
+      mihomoVersionInfo.has_update
+        ? ElMessage.warning('新版本：' + mihomoVersionInfo.remote_version)
+        : ElMessage.success('已是最新版本')
+    } else {
+      ElMessage.error(res.data.msg)
+    }
+  } catch (e: any) {
+    ElMessage.error('检查失败: ' + (e.message ?? e))
+  } finally {
+    mihomoCheckingVersion.value = false
+  }
+}
+
+async function startMihomoUpdate() {
+  try {
+    const res = await axios.post('/api/mihomo/data/update')
+    if (res.data.code === 0) {
+      ElMessage.success('开始下载更新...')
+      Object.assign(mihomoUpdateStatus, res.data.data)
+      startMihomoUpdatePoll()
+    } else {
+      ElMessage.error(res.data.msg)
+    }
+  } catch (e: any) {
+    ElMessage.error('启动更新失败: ' + (e.message ?? e))
+  }
+}
+
+async function cancelMihomoUpdate() {
+  try {
+    const res = await axios.post('/api/mihomo/data/update/cancel')
+    if (res.data.code === 0) ElMessage.info('已取消')
+    else ElMessage.error(res.data.msg)
+  } catch (e: any) {
+    ElMessage.error(e.message ?? e)
+  }
+}
+
+function startMihomoUpdatePoll() {
+  if (mihomoUpdatePollTimer) return
+  mihomoUpdatePollTimer = setInterval(async () => {
+    try {
+      const res = await axios.get('/api/mihomo/data/update/status')
+      if (res.data.code !== 0) return
+      Object.assign(mihomoUpdateStatus, res.data.data)
+      if (mihomoUpdateStatus.state === 'done') {
+        ElMessage.success('数据文件更新完成！')
+        stopMihomoUpdatePoll()
+        loadMihomoStatus()
+      } else if (mihomoUpdateStatus.state === 'failed') {
+        ElMessage.error('更新失败：' + mihomoUpdateStatus.msg)
+        stopMihomoUpdatePoll()
+      } else if (mihomoUpdateStatus.state === 'canceled') {
+        stopMihomoUpdatePoll()
+      }
+    } catch { /* ignore */ }
+  }, 1000)
+}
+
+function stopMihomoUpdatePoll() {
+  if (mihomoUpdatePollTimer) { clearInterval(mihomoUpdatePollTimer); mihomoUpdatePollTimer = null }
+}
+
+// ── 配置文件 ──
+
+async function loadMihomoConfig() {
+  mihomoConfigLoading.value = true
+  mihomoConfigError.value = ''
+  try {
+    const res = await axios.get('/api/mihomo/config')
+    if (res.data.code === 0) {
+      mihomoConfigText.value = res.data.data?.content ?? ''
+    } else {
+      mihomoConfigError.value = res.data.msg
+    }
+  } catch (e: any) {
+    mihomoConfigError.value = '加载失败: ' + (e.message ?? e)
+  } finally {
+    mihomoConfigLoading.value = false
+  }
+}
+
+async function saveMihomoConfig() {
+  mihomoConfigSaving.value = true
+  try {
+    const res = await axios.put('/api/mihomo/config', { content: mihomoConfigText.value })
+    if (res.data.code === 0) {
+      ElMessage.success('配置已保存')
+    } else {
+      ElMessage.error(res.data.msg)
+    }
+  } catch (e: any) {
+    ElMessage.error('保存失败: ' + (e.message ?? e))
+  } finally {
+    mihomoConfigSaving.value = false
+  }
+}
+
+// ── 二进制安装 ──
+
+async function checkMihomoBinaryVersion() {
+  mihomoBinaryChecking.value = true
+  try {
+    const res = await axios.get('/api/mihomo/binary/version')
+    if (res.data.code === 0) {
+      Object.assign(mihomoBinaryVersionInfo, res.data.data)
+      mihomoBinaryVersionInfo.has_update
+        ? ElMessage.warning('新版本可用：' + mihomoBinaryVersionInfo.remote_version)
+        : ElMessage.success('已是最新版本')
+    } else {
+      ElMessage.error(res.data.msg)
+    }
+  } catch (e: any) {
+    ElMessage.error('检查失败: ' + (e.message ?? e))
+  } finally {
+    mihomoBinaryChecking.value = false
+  }
+}
+
+async function startMihomoInstall() {
+  try {
+    const res = await axios.post('/api/mihomo/install')
+    if (res.data.code === 0) {
+      ElMessage.success('开始安装...')
+      Object.assign(mihomoInstallStatus, res.data.data)
+      startMihomoInstallPoll()
+    } else {
+      ElMessage.error(res.data.msg)
+    }
+  } catch (e: any) {
+    ElMessage.error('启动安装失败: ' + (e.message ?? e))
+  }
+}
+
+async function cancelMihomoInstall() {
+  try {
+    const res = await axios.post('/api/mihomo/install/cancel')
+    if (res.data.code === 0) ElMessage.info('已取消')
+    else ElMessage.error(res.data.msg)
+  } catch (e: any) {
+    ElMessage.error(e.message ?? e)
+  }
+}
+
+function startMihomoInstallPoll() {
+  if (mihomoInstallPollTimer) return
+  mihomoInstallPollTimer = setInterval(async () => {
+    try {
+      const res = await axios.get('/api/mihomo/install/status')
+      if (res.data.code !== 0) return
+      Object.assign(mihomoInstallStatus, res.data.data)
+      if (mihomoInstallStatus.state === 'done') {
+        ElMessage.success('Mihomo 安装/更新完成！')
+        stopMihomoInstallPoll()
+        loadMihomoStatus()
+      } else if (mihomoInstallStatus.state === 'failed') {
+        ElMessage.error('安装失败：' + mihomoInstallStatus.msg)
+        stopMihomoInstallPoll()
+      } else if (mihomoInstallStatus.state === 'canceled') {
+        stopMihomoInstallPoll()
+      }
+    } catch { /* ignore */ }
+  }, 1000)
+}
+
+function stopMihomoInstallPoll() {
+  if (mihomoInstallPollTimer) { clearInterval(mihomoInstallPollTimer); mihomoInstallPollTimer = null }
+}
+
+async function uninstallMihomo(mode: string) {
+  const label = mode === 'full' ? '完全卸载（删除全部文件）' : '软卸载（仅删除二进制）'
+  try {
+    await ElMessageBox.confirm(`确认执行：${label}？此操作不可逆。`, '卸载确认', {
+      confirmButtonText: '确认卸载',
+      cancelButtonText: '取消',
+      type: 'warning',
+    })
+  } catch { return }
+  mihomoUninstalling.value = mode
+  try {
+    const res = await axios.post('/api/mihomo/uninstall', { mode })
+    if (res.data.code === 0) {
+      ElMessage.success('卸载完成')
+      await loadMihomoStatus()
+    } else {
+      ElMessage.error(res.data.msg)
+    }
+  } catch (e: any) {
+    ElMessage.error('卸载失败: ' + (e.message ?? e))
+  } finally {
+    mihomoUninstalling.value = ''
+  }
+}
+
+function stopMihomoAllPolls() {
+  stopMihomoUpdatePoll()
+  stopMihomoInstallPoll()
+}
+
+function formatMihomoSize(bytes: number): string {
+  if (bytes < 1024) return bytes + ' B'
+  if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB'
+  return (bytes / 1048576).toFixed(1) + ' MB'
+}
 
 // 短信转发
 function smsForwardHandler() {
@@ -2705,10 +3235,13 @@ onMounted(() => {
   psmGetHandler();
   // 获取签约速率
   netAmbrGetHandler();
+  // 静默预取 mihomo 状态（让按钮副标题保持准确）
+  loadMihomoStatus();
 });
 
 onUnmounted(() => {
   stopAutoRefresh();
+  stopMihomoAllPolls();
 });
 </script>
 
@@ -2803,10 +3336,6 @@ onUnmounted(() => {
   gap: 12px;
 }
 
-.wifi-mode-controls {
-  gap: 0;
-}
-
 .quick-action-button,
 .wifi-mode-button {
   display: inline-flex;
@@ -2834,6 +3363,68 @@ onUnmounted(() => {
   border-color: rgba(96, 165, 250, 0.5);
   background: linear-gradient(135deg, rgba(37, 99, 235, 0.28), rgba(14, 165, 233, 0.2));
   box-shadow: 0 6px 18px rgba(37, 99, 235, 0.2);
+}
+
+.mihomo-action-button.active {
+  border-color: rgba(167, 139, 250, 0.5);
+  background: linear-gradient(135deg, rgba(124, 58, 237, 0.28), rgba(14, 165, 233, 0.2));
+  box-shadow: 0 6px 18px rgba(124, 58, 237, 0.2);
+}
+
+/* Mihomo dialog 内样式 */
+.mihomo-dialog :deep(.el-dialog) {
+  max-height: 92vh;
+  display: flex;
+  flex-direction: column;
+}
+.mihomo-dialog :deep(.el-dialog__header) { flex-shrink: 0; }
+.mihomo-dialog :deep(.el-dialog__footer) { flex-shrink: 0; }
+.mihomo-dialog :deep(.el-dialog__body) {
+  padding: 0;
+  flex: 1;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.mihomo-tabs { border: none; box-shadow: none; }
+.mihomo-tabs :deep(.el-tabs__header) { margin-bottom: 0; flex-shrink: 0; }
+.mihomo-tabs :deep(.el-tabs__content) { padding: 16px; }
+
+.mh-status-card { background: #f8f9fb; border-radius: 8px; padding: 14px 16px; margin-bottom: 14px; }
+.mh-status-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+.mh-meta { font-size: 12px; color: #909399; }
+.mh-dir { word-break: break-all; }
+.mh-info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.mh-info-item { display: flex; flex-direction: column; gap: 2px; }
+.mh-info-label { font-size: 11px; color: #c0c4cc; }
+.mh-info-value { font-size: 13px; color: #303133; font-weight: 500; word-break: break-all; }
+.mh-control-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+.mh-output {
+  background: #1a1a2e; color: #a8b4c8; padding: 8px 12px; border-radius: 6px;
+  font-size: 11px; line-height: 1.6; max-height: 130px; overflow-y: auto;
+  white-space: pre-wrap; word-break: break-all; margin-top: 10px;
+}
+.mh-data-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; flex-wrap: wrap; gap: 8px; }
+.mh-version-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.mh-progress-area { background: #f8f9fb; border-radius: 6px; padding: 10px 12px; }
+.mh-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.mh-install-version-card { background: #f8f9fb; border-radius: 8px; padding: 14px 16px; }
+.mh-config-toolbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; flex-wrap: wrap; gap: 6px; }
+.mh-config-error { color: #f56c6c; font-size: 12px; margin-bottom: 6px; }
+.mh-config-editor {
+  width: 100%; height: clamp(180px, 45vh, 340px); background: #1e1e1e; color: #d4d4d4;
+  border: 1px solid #3c3c3c; border-radius: 6px; padding: 10px 12px;
+  font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+  font-size: 12px; line-height: 1.7; resize: vertical;
+  box-sizing: border-box; outline: none;
+}
+.mh-config-editor:focus { border-color: #409eff; }
+
+@media (max-width: 600px) {
+  .mihomo-tabs :deep(.el-tabs__content) { padding: 10px 8px; }
+  .mh-status-card { padding: 10px 12px; margin-bottom: 10px; }
+  .mh-info-grid { grid-template-columns: 1fr; gap: 6px; }
+  .mh-control-row { gap: 6px; }
+  .mh-install-version-card { padding: 10px 12px; }
 }
 
 .wifi-mode-button.active {

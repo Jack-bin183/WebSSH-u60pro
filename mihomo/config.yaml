@@ -1,0 +1,109 @@
+mixed-port: 7890
+redir-port: 7892
+tproxy-port: 7893
+authentication: [""]
+allow-lan: true
+mode: Rule
+log-level: warning
+ipv6: true
+external-controller: :9999
+external-ui: ui
+external-ui-url: "https://v6.gh-proxy.org/https://github.com/Zephyruso/zashboard/releases/latest/download/dist-cdn-fonts.zip"
+secret: 
+tun: {enable: true, stack: system, device: utun, auto-route: false, auto-detect-interface: false}
+experimental: {ignore-resolve-fail: true}
+sniffer: {
+	enable: true, 
+	parse-pure-ip: true, 
+	skip-domain: ['+.push.apple.com', 'Mijia Cloud'], 
+	sniff: {http: {ports: [80, 8080-8880], override-destination: true}, 
+		tls: {ports: [443, 8443]}, 
+		quic: {ports: [443, 8443]}
+	}
+}
+find-process-mode: "off"
+routing-mark: 7894
+unified-delay: true
+dns:
+  enable: true
+  listen: :1053
+  use-hosts: true
+  ipv6: true
+  default-nameserver: [ 223.5.5.5, 2400:3200::1 ]
+  direct-nameserver: [ 223.5.5.5, 1.2.4.8 ]
+  enhanced-mode: redir-host
+  respect-rules: true
+  nameserver-policy: {'rule-set:CN_域': [ 223.5.5.5, 1.2.4.8 ]}
+  proxy-server-nameserver : [ 223.5.5.5, 2400:3200::1 ]
+  nameserver: [ 1.1.1.1, 8.8.8.8 ]
+use-system-hosts: true
+hosts:
+  'time.android.com': 203.107.6.88
+  'time.facebook.com': 203.107.6.88
+  'services.googleapis.cn': services.googleapis.com
+  'localhost': 127.0.0.1
+proxies:
+  - name: 🇨🇳 大陆
+    type: direct
+    udp: true
+
+  - name: ⛔️ 拒绝连接
+    type: reject
+
+  - name: 🇺🇸 美国
+    type: vless
+    server: 144.34.239.54
+    port: 17335
+    uuid: 9c817caa-b71d-40c2-a9a2-ff9d2c736147
+    network: tcp
+    udp: true
+    tls: true
+    servername: www.apple.com
+    client-fingerprint: chrome
+    reality-opts:
+      public-key: ItvMAjcwfB_1OZLdadrjHUONP0SpZ1DqDTAyaxw2ayA
+      short-id: "8896"
+proxy-groups:
+  - name: 默认代理
+    type: select
+    proxies:
+      - 🇺🇸 美国
+      - 🇨🇳 大陆
+      - ⛔️ 拒绝连接
+
+rules:
+ - DOMAIN,pan.x86server.com,🇺🇸 美国
+ - DOMAIN-SUFFIX,apple.com,🇨🇳 大陆
+ - DOMAIN-SUFFIX,microsoft.com,🇨🇳 大陆
+ - DOMAIN-SUFFIX,wechat.com,🇨🇳 大陆
+ - DOMAIN-SUFFIX,x86server.com,🇨🇳 大陆
+ - DOMAIN-SUFFIX,cloudcpte.com,🇨🇳 大陆
+
+ - DOMAIN-KEYWORD,adobe,REJECT
+ - DOMAIN-SUFFIX,adobe.com,REJECT
+ - DOMAIN-SUFFIX,adobe.io,REJECT
+
+ - IP-CIDR,144.34.239.54/32,🇨🇳 大陆,no-resolve
+ - GEOSITE,private,🇨🇳 大陆
+ - GEOIP,private,🇨🇳 大陆,no-resolve
+ - RULE-SET,CN_域,🇨🇳 大陆
+ - RULE-SET,CN_IP,🇨🇳 大陆
+ - MATCH,默认代理
+
+rule-providers:
+  CN_域:
+    type: http
+    behavior: domain
+    format: mrs
+    interval: 86400
+    path: ./rules/CN_域.mrs
+    url: https://cdn.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@meta/geo/geosite/cn.mrs
+
+  CN_IP:
+    type: http
+    behavior: ipcidr
+    format: mrs
+    interval: 86400
+    path: ./rules/CN_IP.mrs
+    url: https://cdn.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@meta/geo/geoip/cn.mrs
+
