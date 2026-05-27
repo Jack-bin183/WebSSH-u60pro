@@ -375,10 +375,12 @@ func updateAttemptStatus(rawURL string, originalURL string) {
 }
 
 // downloadFile 代理优先，GitHub 直连兜底，并记录下载进度。
+// 实际下载前会先并行探测各代理的速度（Range 100KB），按吞吐排序后再依次尝试。
 func downloadFile(ctx context.Context, downloadURL string, savePath string, totalHint int64, proxies []string) error {
 	var lastErr error
 	client := updateHTTPClient()
-	for _, u := range buildUpdateTryURLs(downloadURL, proxies) {
+	rankedProxies := service.RankProxiesBySpeed(proxies, downloadURL)
+	for _, u := range buildUpdateTryURLs(downloadURL, rankedProxies) {
 		if err := ctx.Err(); err != nil {
 			return err
 		}

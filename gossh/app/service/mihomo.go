@@ -13,6 +13,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -177,6 +179,145 @@ func buildMihomoTryURLs(originalURL string, proxies []string) []string {
 	return urls
 }
 
+// ─────────────────────────── 代理测速 ───────────────────────────
+
+const (
+	proxyProbeMaxBytes  int64         = 100 * 1024
+	proxyProbeTimeout   time.Duration = 3 * time.Second
+	proxyRankCacheTTL   time.Duration = 60 * time.Second
+)
+
+type proxyRankCacheEntry struct {
+	ranked    []string
+	expiresAt time.Time
+}
+
+var (
+	proxyRankCache   = make(map[string]proxyRankCacheEntry)
+	proxyRankCacheMu sync.Mutex
+)
+
+// RankProxiesBySpeed 对一组代理做并行测速（Range 0-100KB），返回按吞吐量从快到慢排好序的列表。
+// 测速失败的代理保留在末尾以便兜底重试。结果在 60s 内会被缓存，避免批量下载时重复探测。
+func RankProxiesBySpeed(proxies []string, probeURL string) []string {
+	if len(proxies) <= 1 {
+		return append([]string(nil), proxies...)
+	}
+	cacheKey := strings.Join(proxies, "|") + "::" + probeURL
+	proxyRankCacheMu.Lock()
+	if e, ok := proxyRankCache[cacheKey]; ok && time.Now().Before(e.expiresAt) {
+		ranked := append([]string(nil), e.ranked...)
+		proxyRankCacheMu.Unlock()
+		return ranked
+	}
+	proxyRankCacheMu.Unlock()
+
+	type result struct {
+		proxy string
+		bps   float64
+		ok    bool
+	}
+	client := mihomoHTTPClient()
+	out := make(chan result, len(proxies))
+	var wg sync.WaitGroup
+	for _, p := range proxies {
+		wg.Add(1)
+		go func(p string) {
+			defer wg.Done()
+			bps, err := probeProxySpeed(client, p, probeURL)
+			out <- result{p, bps, err == nil && bps > 0}
+		}(p)
+	}
+	wg.Wait()
+	close(out)
+
+	var good, bad []result
+	for r := range out {
+		if r.ok {
+			good = append(good, r)
+		} else {
+			bad = append(bad, r)
+		}
+	}
+	sort.SliceStable(good, func(i, j int) bool { return good[i].bps > good[j].bps })
+
+	indexOf := func(s string) int {
+		for i, p := range proxies {
+			if p == s {
+				return i
+			}
+		}
+		return len(proxies)
+	}
+	sort.SliceStable(bad, func(i, j int) bool { return indexOf(bad[i].proxy) < indexOf(bad[j].proxy) })
+
+	ranked := make([]string, 0, len(proxies))
+	for _, r := range good {
+		ranked = append(ranked, r.proxy)
+	}
+	for _, r := range bad {
+		ranked = append(ranked, r.proxy)
+	}
+
+	if len(good) > 0 {
+		slog.Info("proxy speed rank",
+			"winner", good[0].proxy,
+			"winner_kbps", int(good[0].bps/1024),
+			"good_count", len(good),
+			"bad_count", len(bad),
+		)
+	} else {
+		slog.Warn("proxy speed rank: all probes failed", "count", len(proxies))
+	}
+
+	proxyRankCacheMu.Lock()
+	proxyRankCache[cacheKey] = proxyRankCacheEntry{
+		ranked:    append([]string(nil), ranked...),
+		expiresAt: time.Now().Add(proxyRankCacheTTL),
+	}
+	proxyRankCacheMu.Unlock()
+	return ranked
+}
+
+func probeProxySpeed(client *http.Client, proxy, originalURL string) (float64, error) {
+	proxy = strings.TrimSpace(proxy)
+	if proxy == "" {
+		return 0, errors.New("empty proxy")
+	}
+	if !strings.HasSuffix(proxy, "/") {
+		proxy += "/"
+	}
+	probeURL := proxy + originalURL
+	ctx, cancel := context.WithTimeout(context.Background(), proxyProbeTimeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, probeURL, nil)
+	if err != nil {
+		return 0, err
+	}
+	req.Header.Set("Range", fmt.Sprintf("bytes=0-%d", proxyProbeMaxBytes-1))
+	req.Header.Set("User-Agent", "WebSSH-u60pro-Probe")
+	start := time.Now()
+	resp, err := client.Do(req)
+	if err != nil {
+		return 0, err
+	}
+	defer resp.Body.Close()
+	// 200 (Range 不支持时整体返回) / 206 (部分内容) 都视为成功
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusPartialContent {
+		return 0, fmt.Errorf("HTTP %d", resp.StatusCode)
+	}
+	n, err := io.Copy(io.Discard, io.LimitReader(resp.Body, proxyProbeMaxBytes))
+	elapsed := time.Since(start).Seconds()
+	if n == 0 || elapsed <= 0 {
+		if err != nil {
+			return 0, err
+		}
+		return 0, errors.New("empty body")
+	}
+	// 即便后半段读到一半被取消，已读字节也能反映出实际吞吐量
+	return float64(n) / elapsed, nil
+}
+
 func mihomoFetchText(rawURL string) (string, error) {
 	client := mihomoHTTPClient()
 	var lastErr error
@@ -211,7 +352,8 @@ func mihomoFetchText(rawURL string) (string, error) {
 func mihomoDownloadFile(ctx context.Context, rawURL string, destPath string, onProgress func(downloaded, total int64)) error {
 	client := mihomoHTTPClient()
 	var lastErr error
-	for _, u := range buildMihomoTryURLs(rawURL, mihomoProxies) {
+	rankedProxies := RankProxiesBySpeed(mihomoProxies, rawURL)
+	for _, u := range buildMihomoTryURLs(rawURL, rankedProxies) {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
@@ -538,7 +680,7 @@ func MihomoDataVersionHandler(c *gin.Context) {
 		"data": gin.H{
 			"remote_version": remoteVersion,
 			"local_version":  localVersion,
-			"has_update":     remoteVersion != "" && !strings.Contains(localVersion, remoteVersion),
+			"has_update":     remoteVersion != "" && remoteVersion != localVersion,
 		},
 	})
 }
@@ -655,20 +797,41 @@ func runMihomoDataUpdate(ctx context.Context, cancel context.CancelFunc) {
 
 // MihomoCheckBinaryVersionHandler GET /api/mihomo/binary/version
 func MihomoCheckBinaryVersionHandler(c *gin.Context) {
-	remote_version, err := mihomoFetchText(mihomoInstallVersionURL)
+	remoteVersion, err := mihomoFetchText(mihomoInstallVersionURL)
 	if err != nil {
 		c.JSON(200, gin.H{"code": 1, "msg": "获取最新版本失败: " + err.Error()})
 		return
 	}
-	local_version := getMihomoInstalledVersion(getMihomoDir())
+	localVersion := getMihomoInstalledVersion(getMihomoDir())
+
+	remoteTag := extractMihomoVersionTag(remoteVersion)
+	localTag := extractMihomoVersionTag(localVersion)
+
+	// 只有当能从两边都提取出版本号且不相等时，才认为有更新；
+	// 任何一边为空都视为"未知"，不报 has_update（避免空 local 永远触发更新提示）。
+	hasUpdate := remoteTag != "" && localTag != "" && remoteTag != localTag
+
 	c.JSON(200, gin.H{
 		"code": 0, "msg": "ok",
 		"data": gin.H{
-			"local_version":  local_version,
-			"remote_version": remote_version,
-			"has_update":     remote_version != "" && remote_version != local_version,
+			"local_version":  localVersion,
+			"remote_version": remoteVersion,
+			"local_tag":      localTag,
+			"remote_tag":     remoteTag,
+			"has_update":     hasUpdate,
 		},
 	})
+}
+
+// extractMihomoVersionTag 从一段任意字符串里提取形如 v1.19.1 或 alpha-xxxxxxx 的版本片段
+var mihomoVersionRe = regexp.MustCompile(`(v\d+\.\d+\.\d+(?:-[A-Za-z0-9.]+)?|alpha-[A-Fa-f0-9]+|beta-[A-Fa-f0-9]+)`)
+
+func extractMihomoVersionTag(s string) string {
+	if s == "" {
+		return ""
+	}
+	m := mihomoVersionRe.FindString(s)
+	return strings.TrimSpace(m)
 }
 
 // MihomoInstallStatusHandler GET /api/mihomo/install/status
