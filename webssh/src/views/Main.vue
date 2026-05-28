@@ -27,6 +27,7 @@
             <div
               :class="[
                 'battery',
+                batteryStateClass,
                 {
                   charging:
                     deviceInfo?.bat_charger_connect &&
@@ -40,8 +41,8 @@
               <!-- 充电状态 -->
               <div class="battery-charging">⚡</div>
             </div>
-            <span style="padding-left: 10px" v-if="deviceInfo.bat_percent"
-              >{{ deviceInfo.bat_percent }} %</span
+            <span class="battery-percent" v-if="deviceInfo.bat_percent"
+              >{{ deviceInfo.bat_percent }}%</span
             >
           </div>
         </div>
@@ -87,26 +88,27 @@
             </button>
 
           <label class="quick-action-button" style="padding: 1px 10px;">
-  <span class="quick-action-icon">Net</span>
+            <span class="quick-action-icon">Net</span>
 
-  <span class="quick-action-copy">
-    <span class="quick-action-title" style="font-size: 13px;">数据模式</span>
+            <span class="quick-action-copy">
+              <span class="quick-action-title" style="font-size: 13px;">数据模式</span>
 
-    <el-select
-      class="net-select"
-      v-model="d.net_select"
-      placeholder="未知"
-      @change="netSelectChange"
-    >
-      <el-option
-        v-for="opt in netSelectOptions"
-        :key="opt.value"
-        :label="opt.label"
-        :value="opt.value"
-      />
-    </el-select>
-  </span>
-</label>
+              <el-select
+                class="net-select"
+                popper-class="net-select-popper"
+                v-model="d.net_select"
+                placeholder="未知"
+                @change="netSelectChange"
+              >
+                <el-option
+                  v-for="opt in netSelectOptions"
+                  :key="opt.value"
+                  :label="opt.label"
+                  :value="opt.value"
+                />
+              </el-select>
+            </span>
+          </label>
 
           <button
             class="wifi-mode-button"
@@ -904,12 +906,12 @@
               </div>
             </div>
             <div class="info-item">
-              <span class="label">连接数量</span>
-              <span class="value"
-                >无线: {{
-                  lanUserList?.wireless_num || '0'
-                }} / 有线: {{ lanUserList?.lan_num || '0' }}</span
-              >
+              <span class="label">接入设备</span>
+              <span class="value">
+                <button class="device-count-link" @click="openDeviceDialog">无线: {{ lanUserList?.wireless_num || '0' }}</button>
+                &nbsp;/&nbsp;
+                <button class="device-count-link" @click="openDeviceDialog">有线: {{ lanUserList?.lan_num || '0' }}</button>
+              </span>
             </div>
             <div class="info-item">
               <span class="label">主载波</span>
@@ -1182,7 +1184,6 @@
                 v-if="mihomoStatus.api_version"
                 :href="'http://' + mihomoStatus.external_controller"
                 target="_blank"
-                style="text-decoration: none; color: blue;"
                 class="mh-info-value"
               >
                 {{ mihomoStatus.external_controller }}
@@ -1355,6 +1356,88 @@
 
     <template #footer>
       <el-button @click="mihomoDialogVisible = false">关闭</el-button>
+    </template>
+  </el-dialog>
+
+  <!-- ───────── 已连接设备弹窗（无线 + 有线） ───────── -->
+  <el-dialog
+    v-model="deviceDialogVisible"
+    title="已连接设备"
+    width="min(680px, 96vw)"
+    :close-on-click-modal="true"
+    destroy-on-close
+    class="wireless-dialog">
+
+    <div v-if="deviceListLoading" style="text-align:center;padding:32px 0;">
+      <div class="loading-spinner" style="width:32px;height:32px;border-width:3px;margin:0 auto 12px;"></div>
+      <p style="color:rgba(255,255,255,0.7);margin:0">正在获取设备列表...</p>
+    </div>
+
+    <div v-else-if="wirelessDeviceList.length === 0 && wiredDeviceList.length === 0"
+         style="text-align:center;padding:32px 0;color:rgba(255,255,255,0.6);font-size:14px;">
+      暂无连接设备
+    </div>
+
+    <template v-else>
+      <!-- 无线段 -->
+      <div v-if="wirelessDeviceList.length > 0" class="device-section">
+        <h4 class="device-section-title">
+          <span>无线</span>
+          <span class="device-section-count">{{ wirelessDeviceList.length }}</span>
+        </h4>
+        <div class="wireless-device-list">
+          <div v-for="device in wirelessDeviceList" :key="'w-' + device.mac_address" class="wireless-device-item">
+            <div class="wireless-device-header">
+              <span class="wireless-device-name">{{ device.hostname || '未知设备' }}</span>
+              <span class="wireless-device-type-tag" :class="getDeviceTagClass(device.interface_type)">
+                {{ device.interface_type }}
+              </span>
+            </div>
+            <div class="wireless-device-info">
+              <div class="wireless-info-row">
+                <span class="wireless-info-label">IP 地址</span>
+                <span class="wireless-info-value">{{ device.ip_address || '-' }}</span>
+              </div>
+              <div class="wireless-info-row">
+                <span class="wireless-info-label">连接时间</span>
+                <span class="wireless-info-value">{{ device.access_time || '-' }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 有线段 -->
+      <div v-if="wiredDeviceList.length > 0" class="device-section" :class="{ 'device-section-spaced': wirelessDeviceList.length > 0 }">
+        <h4 class="device-section-title">
+          <span>有线</span>
+          <span class="device-section-count">{{ wiredDeviceList.length }}</span>
+        </h4>
+        <div class="wireless-device-list">
+          <div v-for="device in wiredDeviceList" :key="'l-' + device.mac_address" class="wireless-device-item">
+            <div class="wireless-device-header">
+              <span class="wireless-device-name">{{ device.hostname || '未知设备' }}</span>
+              <span class="wireless-device-type-tag" :class="getDeviceTagClass(device.interface_type)">
+                {{ device.interface_type }}
+              </span>
+            </div>
+            <div class="wireless-device-info">
+              <div class="wireless-info-row">
+                <span class="wireless-info-label">IP 地址</span>
+                <span class="wireless-info-value">{{ device.ip_address || '-' }}</span>
+              </div>
+              <div class="wireless-info-row">
+                <span class="wireless-info-label">连接时间</span>
+                <span class="wireless-info-value">{{ device.access_time || '-' }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </template>
+
+    <template #footer>
+      <el-button @click="deviceDialogVisible = false">关闭</el-button>
     </template>
   </el-dialog>
 
@@ -2467,7 +2550,7 @@ function stopAutoRefresh() {
 
 function handleOpenAdbClick() {
   if (usbStatus?.value.connect != 1) {
-    ElMessage.warning('请先连接数据线再试')
+    ElMessage.warning('请连接数据线后再试')
     return
   }
   oneClickDebug()
@@ -2929,6 +3012,15 @@ const totalCpuLoad = computed(() => {
   return clampPercent(100 - idle);
 });
 
+// 根据电量百分比给电池图标分配颜色等级
+const batteryStateClass = computed(() => {
+  const p = Number(deviceInfo.value?.bat_percent ?? NaN);
+  if (!Number.isFinite(p)) return '';
+  if (p <= 20) return 'low';
+  if (p <= 50) return 'medium';
+  return '';
+});
+
 const cpuCoreLoads = computed(() => {
   return [1, 2, 3, 4].map((index) => {
     const idle = Number(deviceInfo.value.cpuinfo?.[index]?.idle ?? 100);
@@ -2975,6 +3067,87 @@ function getTempText(temp: unknown): string {
   return '正常';
 }
 
+// ─────────────────────────── 已连接设备列表（无线 + 有线） ───────────────────────────
+
+interface ConnectedDevice {
+  ip_address: string;
+  mac_address: string;
+  hostname: string;
+  interface_type: string;
+  access_time: string;
+}
+
+const deviceDialogVisible = ref(false);
+const deviceListLoading = ref(false);
+const wirelessDeviceList = ref<ConnectedDevice[]>([]);
+const wiredDeviceList = ref<ConnectedDevice[]>([]);
+
+function getDeviceTagClass(interfaceType: string): string {
+  if (interfaceType === '5G') return 'tag-5g';
+  if (interfaceType === 'Ethernet') return 'tag-ethernet';
+  return 'tag-24g';
+}
+
+async function openDeviceDialog() {
+  deviceDialogVisible.value = true;
+  deviceListLoading.value = true;
+  wirelessDeviceList.value = [];
+  wiredDeviceList.value = [];
+  try {
+    const resultMap = await callUbusBatch([
+      {
+        jsonrpc: '2.0',
+        id: 98,
+        method: 'call',
+        params: [
+          SESSION_ID,
+          'zwrt_router.api',
+          'router_wireless_access_list',
+          { start_id: 1, end_id: 64 },
+        ],
+      },
+      {
+        jsonrpc: '2.0',
+        id: 99,
+        method: 'call',
+        params: [
+          SESSION_ID,
+          'zwrt_router.api',
+          'router_lan_access_list',
+          {},
+        ],
+      },
+    ]);
+    if (resultMap[98]?.wireless_access_list_info) {
+      wirelessDeviceList.value = resultMap[98].wireless_access_list_info;
+    }
+    if (resultMap[99]?.lan_access_list_info) {
+      wiredDeviceList.value = resultMap[99].lan_access_list_info;
+    }
+  } catch (e: any) {
+    ElMessage.error('获取设备列表失败: ' + (e?.message ?? e));
+  } finally {
+    deviceListLoading.value = false;
+  }
+}
+
+// 弹窗打开时锁住底层页面滚动（index.html 把 html/body 都设为 height:100%,
+// Element Plus 默认的 lock-scroll 只锁 body，touch 滚动会发生在 html 上锁不住）
+watch([deviceDialogVisible, mihomoDialogVisible], ([w, m]) => {
+  const anyOpen = w || m;
+  const html = document.documentElement;
+  const body = document.body;
+  if (anyOpen) {
+    html.style.overflow = 'hidden';
+    body.style.overflow = 'hidden';
+    body.style.touchAction = 'none';
+  } else {
+    html.style.overflow = '';
+    body.style.overflow = '';
+    body.style.touchAction = '';
+  }
+});
+
 onMounted(() => {
   fetchAllData();
   fetchAllData2();
@@ -2992,6 +3165,10 @@ onMounted(() => {
 onUnmounted(() => {
   stopAutoRefresh();
   stopMihomoAllPolls();
+  // 兜底还原（防止组件卸载时仍残留锁定状态）
+  document.documentElement.style.overflow = '';
+  document.body.style.overflow = '';
+  document.body.style.touchAction = '';
 });
 </script>
 
@@ -3121,78 +3298,41 @@ onUnmounted(() => {
   box-shadow: 0 6px 18px rgba(124, 58, 237, 0.2);
 }
 
-/* Mihomo dialog 内样式 */
-.mihomo-dialog :deep(.el-dialog) {
-  max-height: 92vh;
-  display: flex;
-  flex-direction: column;
-}
-.mihomo-dialog :deep(.el-dialog__header) { flex-shrink: 0; }
-.mihomo-dialog :deep(.el-dialog__footer) { flex-shrink: 0; }
-.mihomo-dialog :deep(.el-dialog__body) {
-  padding: 0;
-  flex: 1;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
-}
-.mihomo-tabs { border: none; box-shadow: none; }
-.mihomo-tabs :deep(.el-tabs__header) { margin-bottom: 0; flex-shrink: 0; }
-.mihomo-tabs :deep(.el-tabs__content) { padding: 16px; }
+/* Mihomo 弹窗样式见文件底部非 scoped 块（因 el-dialog teleport 到 body） */
 
-.mh-status-card { background: #f8f9fb; border-radius: 8px; padding: 14px 16px; margin-bottom: 14px; }
-.mh-status-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
-.mh-meta { font-size: 12px; color: #909399; }
-.mh-dir { word-break: break-all; }
-.mh-info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-.mh-info-item { display: flex; flex-direction: column; gap: 2px; }
-.mh-info-label { font-size: 11px; color: #c0c4cc; }
-.mh-info-value { font-size: 13px; color: #303133; font-weight: 500; word-break: break-all; }
-.mh-control-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
-.mh-autostart-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 12px; padding-top: 12px; border-top: 1px solid #ebeef5; }
-.mh-output {
-  background: #1a1a2e; color: #a8b4c8; padding: 8px 12px; border-radius: 6px;
-  font-size: 11px; line-height: 1.6; max-height: 130px; overflow-y: auto;
-  white-space: pre-wrap; word-break: break-all; margin-top: 10px;
-}
-.mh-data-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; flex-wrap: wrap; gap: 8px; }
-.mh-version-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-.mh-progress-area { background: #f8f9fb; border-radius: 6px; padding: 10px 12px; }
-.mh-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-.mh-install-version-card { background: #f8f9fb; border-radius: 8px; padding: 14px 16px; }
-.mh-config-toolbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; flex-wrap: wrap; gap: 6px; }
-.mh-config-error { color: #f56c6c; font-size: 12px; margin-bottom: 6px; }
-.mh-config-editor {
-  width: 100%; height: clamp(180px, 45vh, 340px); background: #1e1e1e; color: #d4d4d4;
-  border: 1px solid #3c3c3c; border-radius: 6px; padding: 10px 12px;
-  font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
-  font-size: 12px; line-height: 1.7; resize: vertical;
-  box-sizing: border-box; outline: none;
-}
-.mh-config-editor:focus { border-color: #409eff; }
-
-@media (max-width: 600px) {
-  .mihomo-tabs :deep(.el-tabs__content) { padding: 10px 8px; }
-  .mh-status-card { padding: 10px 12px; margin-bottom: 10px; }
-  .mh-info-grid { grid-template-columns: 1fr; gap: 6px; }
-  .mh-control-row { gap: 6px; }
-  .mh-install-version-card { padding: 10px 12px; }
-}
-
-/* select 外层 */
+/* ============ 数据模式 Select 触发器 - 玻璃风格 ============ */
 .net-select {
-  width:68px;
+  width: 78px;
+  margin-top: 3px; /* 与上方 title 留间距，对齐其他 quick-action 副标题的视觉节奏 */
 }
-
-:deep(.el-select__wrapper) {
-  min-height: 14px;
-  height: 14px;
-  width: 68px;
-  padding: 1px 3px;
+.net-select :deep(.el-select__wrapper) {
+  min-height: 20px;
+  height: 20px;
+  width: 78px;
+  padding: 0 6px;
   font-size: 11px;
+  background: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 6px;
+  box-shadow: none;
+  transition: background 0.2s ease, border-color 0.2s ease;
 }
-
-:deep(.el-select__selected-item){
-  color: rgb(6 6 6 / 59%)
+.net-select :deep(.el-select__wrapper.is-hovering),
+.net-select :deep(.el-select__wrapper.is-focused) {
+  background: rgba(255, 255, 255, 0.22);
+  border-color: rgba(255, 255, 255, 0.55);
+  box-shadow: none;
+}
+.net-select :deep(.el-select__selected-item) {
+  color: #ffffff;
+  font-weight: 600;
+}
+.net-select :deep(.el-select__placeholder) {
+  color: rgba(255, 255, 255, 0.55);
+}
+.net-select :deep(.el-select__caret),
+.net-select :deep(.el-icon) {
+  color: rgba(255, 255, 255, 0.75);
 }
 
 
@@ -4050,51 +4190,117 @@ onUnmounted(() => {
   background: #68d391;
 }
 
+/* ========= 电池图标 ========= */
 .battery {
   position: relative;
-  width: 30px;
-  height: 14px;
-  border: 2px solid #ffffffc4;
-  border-radius: 3px;
+  width: 34px;
+  height: 16px;
+  border: 1.5px solid rgba(255, 255, 255, 0.7);
+  border-radius: 4px;
   box-sizing: border-box;
   display: inline-block;
+  padding: 1.5px;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,0.05) 0%, rgba(0,0,0,0.12) 100%);
+  box-shadow:
+    inset 0 1px 1px rgba(255, 255, 255, 0.18),
+    inset 0 -1px 1px rgba(0, 0, 0, 0.15);
+  transition: border-color 0.3s ease, box-shadow 0.3s ease;
 }
 
 .battery-head {
   position: absolute;
   right: -4px;
-  top: 1px;
+  top: 50%;
+  transform: translateY(-50%);
   width: 3px;
   height: 8px;
-  background: #ffffffc4;
+  background: rgba(255, 255, 255, 0.7);
   border-radius: 0 2px 2px 0;
+  transition: background 0.3s ease;
 }
 
 .battery-level {
   height: 100%;
-  background: #40d67a; /* 默认绿色 */
-  transition: width 0.3s ease, background 0.3s ease;
-  border-radius: 1px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, #34d399 0%, #22c55e 100%);
+  box-shadow: 0 0 6px rgba(52, 211, 153, 0.45), inset 0 1px 1px rgba(255, 255, 255, 0.35);
+  transition: width 0.4s ease, background 0.3s ease, box-shadow 0.3s ease;
+}
+
+/* 中等电量（21%~50%）：琥珀色 */
+.battery.medium .battery-level {
+  background: linear-gradient(90deg, #fbbf24 0%, #f59e0b 100%);
+  box-shadow: 0 0 6px rgba(251, 191, 36, 0.5), inset 0 1px 1px rgba(255, 255, 255, 0.3);
+}
+
+/* 低电量（<=20%）：红色 + 红边框 */
+.battery.low {
+  border-color: rgba(248, 113, 113, 0.75);
+}
+.battery.low .battery-head {
+  background: rgba(248, 113, 113, 0.75);
+}
+.battery.low .battery-level {
+  background: linear-gradient(90deg, #f87171 0%, #ef4444 100%);
+  box-shadow: 0 0 8px rgba(248, 113, 113, 0.55), inset 0 1px 1px rgba(255, 255, 255, 0.3);
+  animation: battery-low-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes battery-low-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.65; }
+}
+
+/* 充电中：金色边框光晕 + 脉冲 */
+.battery.charging {
+  border-color: rgba(252, 211, 77, 0.85);
+  box-shadow:
+    inset 0 1px 1px rgba(255, 255, 255, 0.18),
+    inset 0 -1px 1px rgba(0, 0, 0, 0.15),
+    0 0 8px rgba(252, 211, 77, 0.4);
+  animation: battery-charge-glow 2s ease-in-out infinite;
+}
+.battery.charging .battery-head {
+  background: rgba(252, 211, 77, 0.85);
+}
+
+@keyframes battery-charge-glow {
+  0%, 100% { box-shadow:
+    inset 0 1px 1px rgba(255, 255, 255, 0.18),
+    inset 0 -1px 1px rgba(0, 0, 0, 0.15),
+    0 0 6px rgba(252, 211, 77, 0.3); }
+  50% { box-shadow:
+    inset 0 1px 1px rgba(255, 255, 255, 0.18),
+    inset 0 -1px 1px rgba(0, 0, 0, 0.15),
+    0 0 12px rgba(252, 211, 77, 0.6); }
 }
 
 .battery-charging {
   position: absolute;
   top: 50%;
   left: 50%;
-  transform: translate(-50%, -55%) scale(1.8) rotate(20deg);
-  font-size: 10px;
-  color: #fff200;
-  display: none; /* 默认不显示 */
+  transform: translate(-50%, -50%);
+  font-size: 14px;
+  line-height: 1;
+  color: #fff8b3;
+  text-shadow: 0 0 6px rgba(253, 224, 71, 0.95), 0 0 2px rgba(255, 255, 255, 0.6);
+  display: none;
+  z-index: 2;
+  pointer-events: none;
 }
-
-/* 电量低时变红 */
-.battery.low .battery-level {
-  background: #f56565;
-}
-
-/* 充电状态显示闪电 */
 .battery.charging .battery-charging {
   display: block;
+}
+
+/* 百分比文字 */
+.battery-percent {
+  padding-left: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.92);
+  letter-spacing: 0.3px;
+  white-space: nowrap;
 }
 
 /* 接口区域 */
@@ -4659,6 +4865,572 @@ onUnmounted(() => {
 
   .cpu-core-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* 连接设备数量可点击链接 */
+.device-count-link {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: inherit;
+  font-weight: inherit;
+  color: rgba(147, 210, 255, 0.9);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  transition: color 0.2s ease;
+}
+.device-count-link:hover {
+  color: #ffffff;
+}
+
+</style>
+
+<!-- 无线设备弹窗的样式必须放在非 scoped 块中：
+     Element Plus 的 el-dialog 会 teleport 到 body，
+     scoped CSS 的 data-v 属性无法可靠传递到弹窗内部。 -->
+<style>
+.wireless-dialog.el-dialog {
+  background: linear-gradient(135deg, #1e3c72 0%, #2a5298 60%, #3b82f6 100%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.3) !important;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4) !important;
+  border-radius: 16px !important;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.wireless-dialog.el-dialog .el-dialog__header {
+  background: transparent;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 18px 22px 14px;
+  margin-right: 0;
+}
+.wireless-dialog.el-dialog .el-dialog__title {
+  color: #ffffff !important;
+  font-size: 18px;
+  font-weight: 600;
+}
+.wireless-dialog.el-dialog .el-dialog__headerbtn {
+  top: 14px;
+  right: 14px;
+}
+.wireless-dialog.el-dialog .el-dialog__headerbtn .el-dialog__close {
+  color: rgba(255, 255, 255, 0.65) !important;
+  font-size: 20px;
+}
+.wireless-dialog.el-dialog .el-dialog__headerbtn:hover .el-dialog__close {
+  color: #ffffff !important;
+}
+.wireless-dialog.el-dialog .el-dialog__body {
+  padding: 18px 22px;
+  flex: 1;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  color: rgba(255, 255, 255, 0.9);
+}
+.wireless-dialog.el-dialog .el-dialog__footer {
+  background: transparent;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 12px 22px;
+}
+.wireless-dialog.el-dialog .el-button {
+  background: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  color: rgba(255, 255, 255, 0.9);
+}
+.wireless-dialog.el-dialog .el-button:hover {
+  background: rgba(255, 255, 255, 0.25);
+  border-color: rgba(255, 255, 255, 0.5);
+  color: #ffffff;
+}
+
+/* 设备卡片网格 */
+.wireless-dialog .wireless-device-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 12px;
+}
+.wireless-dialog .wireless-device-item {
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(20px);
+  border-radius: 12px;
+  padding: 14px 16px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.wireless-dialog .wireless-device-item:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
+}
+.wireless-dialog .wireless-device-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.wireless-dialog .wireless-device-name {
+  font-size: 15px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.95);
+  word-break: break-all;
+}
+.wireless-dialog .wireless-device-type-tag {
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  flex: 0 0 auto;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.wireless-dialog .tag-5g {
+  background: rgba(56, 189, 248, 0.18);
+  color: #7dd3fc;
+  border: 1px solid rgba(56, 189, 248, 0.34);
+}
+.wireless-dialog .tag-24g {
+  background: rgba(72, 187, 120, 0.2);
+  color: #7ee787;
+  border: 1px solid rgba(72, 187, 120, 0.3);
+}
+.wireless-dialog .tag-ethernet {
+  background: rgba(167, 139, 250, 0.2);
+  color: #c4b5fd;
+  border: 1px solid rgba(167, 139, 250, 0.36);
+}
+
+/* 分段标题（无线 / 有线） */
+.wireless-dialog .device-section-spaced {
+  margin-top: 20px;
+}
+.wireless-dialog .device-section-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 10px;
+  font-size: 12px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.65);
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+}
+.wireless-dialog .device-section-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.14);
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+.wireless-dialog .wireless-device-info {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.wireless-dialog .wireless-info-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 13px;
+}
+.wireless-dialog .wireless-info-label {
+  color: rgba(255, 255, 255, 0.6);
+  flex: 0 0 60px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.wireless-dialog .wireless-info-value {
+  color: rgba(255, 255, 255, 0.9);
+  word-break: break-all;
+  font-weight: 500;
+}
+
+/* 加载状态 spinner 颜色 */
+.wireless-dialog .loading-spinner {
+  border: 3px solid rgba(255, 255, 255, 0.2);
+  border-top-color: #ffffff;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+/* 暗色系统模式 */
+@media (prefers-color-scheme: dark) {
+  .wireless-dialog.el-dialog {
+    background: linear-gradient(135deg, #0f172a 0%, #1e293b 60%, #334155 100%) !important;
+    border-color: rgba(255, 255, 255, 0.1) !important;
+  }
+  .wireless-dialog .wireless-device-item {
+    background: rgba(15, 23, 42, 0.7);
+    border-color: rgba(255, 255, 255, 0.1);
+  }
+}
+
+/* ============== Mihomo 弹窗 - 深色玻璃风格 ============== */
+.mihomo-dialog.el-dialog {
+  /* 通过覆盖 Element Plus CSS 变量级联到所有子组件 */
+  --el-text-color-primary: rgba(255, 255, 255, 0.92);
+  --el-text-color-regular: rgba(255, 255, 255, 0.8);
+  --el-text-color-secondary: rgba(255, 255, 255, 0.6);
+  --el-text-color-placeholder: rgba(255, 255, 255, 0.45);
+  --el-bg-color: transparent;
+  --el-bg-color-overlay: rgba(255, 255, 255, 0.06);
+  --el-bg-color-page: transparent;
+  --el-fill-color: rgba(255, 255, 255, 0.08);
+  --el-fill-color-light: rgba(255, 255, 255, 0.05);
+  --el-fill-color-lighter: rgba(255, 255, 255, 0.03);
+  --el-fill-color-blank: transparent;
+  --el-border-color: rgba(255, 255, 255, 0.18);
+  --el-border-color-light: rgba(255, 255, 255, 0.12);
+  --el-border-color-lighter: rgba(255, 255, 255, 0.08);
+  --el-border-color-extra-light: rgba(255, 255, 255, 0.05);
+  --el-disabled-bg-color: rgba(255, 255, 255, 0.04);
+  --el-disabled-text-color: rgba(255, 255, 255, 0.35);
+  --el-disabled-border-color: rgba(255, 255, 255, 0.1);
+
+  background: linear-gradient(135deg, #1e3c72 0%, #2a5298 60%, #3b82f6 100%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.3) !important;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4) !important;
+  border-radius: 16px !important;
+  max-height: 92vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+/* Header / Footer / Body */
+.mihomo-dialog.el-dialog .el-dialog__header {
+  background: transparent;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 18px 22px 14px;
+  margin-right: 0;
+  flex-shrink: 0;
+}
+.mihomo-dialog.el-dialog .el-dialog__title {
+  color: #ffffff !important;
+  font-size: 18px;
+  font-weight: 600;
+}
+.mihomo-dialog.el-dialog .el-dialog__headerbtn {
+  top: 14px;
+  right: 14px;
+}
+.mihomo-dialog.el-dialog .el-dialog__headerbtn .el-dialog__close {
+  color: rgba(255, 255, 255, 0.65) !important;
+  font-size: 20px;
+}
+.mihomo-dialog.el-dialog .el-dialog__headerbtn:hover .el-dialog__close {
+  color: #ffffff !important;
+}
+.mihomo-dialog.el-dialog .el-dialog__body {
+  padding: 0;
+  flex: 1;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  color: rgba(255, 255, 255, 0.9);
+}
+.mihomo-dialog.el-dialog .el-dialog__footer {
+  background: transparent;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 12px 22px;
+  flex-shrink: 0;
+}
+
+/* Tabs */
+.mihomo-dialog .mihomo-tabs {
+  border: none;
+  box-shadow: none;
+  background: transparent;
+}
+.mihomo-dialog .el-tabs--border-card {
+  background: transparent;
+}
+.mihomo-dialog .el-tabs--border-card > .el-tabs__header {
+  background: rgba(255, 255, 255, 0.04);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  margin-bottom: 0;
+  flex-shrink: 0;
+}
+.mihomo-dialog .el-tabs--border-card > .el-tabs__header .el-tabs__item {
+  color: rgba(255, 255, 255, 0.65);
+  border-right: 1px solid rgba(255, 255, 255, 0.06);
+  background: transparent;
+  transition: color 0.2s ease, background 0.2s ease;
+}
+.mihomo-dialog .el-tabs--border-card > .el-tabs__header .el-tabs__item:hover {
+  color: rgba(255, 255, 255, 0.95);
+  background: rgba(255, 255, 255, 0.05);
+}
+.mihomo-dialog .el-tabs--border-card > .el-tabs__header .el-tabs__item.is-active {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.1);
+  border-right-color: rgba(255, 255, 255, 0.1);
+}
+.mihomo-dialog .el-tabs__content {
+  padding: 16px;
+}
+
+/* 内部 mh-* 组件 */
+.mihomo-dialog .mh-status-card,
+.mihomo-dialog .mh-install-version-card {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  padding: 14px 16px;
+  margin-bottom: 14px;
+  backdrop-filter: blur(10px);
+}
+.mihomo-dialog .mh-status-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+.mihomo-dialog .mh-meta { font-size: 12px; color: rgba(255, 255, 255, 0.55); }
+.mihomo-dialog .mh-dir { word-break: break-all; }
+.mihomo-dialog .mh-info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.mihomo-dialog .mh-info-item { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; }
+.mihomo-dialog .mh-info-item > .el-tag { align-self: flex-start; }
+.mihomo-dialog .mh-info-label {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.55);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.mihomo-dialog .mh-info-value {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.92);
+  font-weight: 500;
+  word-break: break-all;
+}
+.mihomo-dialog .mh-info-value a {
+  color: #7dd3fc;
+}
+.mihomo-dialog .mh-info-value a:hover {
+  color: #bae6fd;
+}
+.mihomo-dialog .mh-control-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+.mihomo-dialog .mh-autostart-row {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin-top: 12px; padding-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+.mihomo-dialog .mh-output {
+  background: rgba(0, 0, 0, 0.4);
+  color: #c8d4e8;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 11px;
+  line-height: 1.6;
+  max-height: 130px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+  margin-top: 10px;
+  font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+}
+.mihomo-dialog .mh-data-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; flex-wrap: wrap; gap: 8px; }
+.mihomo-dialog .mh-version-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.mihomo-dialog .mh-progress-area {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 12px;
+}
+.mihomo-dialog .mh-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.mihomo-dialog .mh-config-toolbar {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 10px; flex-wrap: wrap; gap: 6px;
+}
+.mihomo-dialog .mh-config-error {
+  color: #fca5a5;
+  font-size: 12px;
+  margin-bottom: 6px;
+  background: rgba(220, 38, 38, 0.15);
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid rgba(220, 38, 38, 0.3);
+}
+.mihomo-dialog .mh-config-editor {
+  width: 100%;
+  height: clamp(180px, 45vh, 340px);
+  background: rgba(0, 0, 0, 0.4);
+  color: #e4e8ee;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+  font-size: 12px;
+  line-height: 1.7;
+  resize: vertical;
+  box-sizing: border-box;
+  outline: none;
+}
+.mihomo-dialog .mh-config-editor:focus {
+  border-color: rgba(125, 211, 252, 0.6);
+  box-shadow: 0 0 0 2px rgba(125, 211, 252, 0.15);
+}
+
+/* Element Plus 表格暗色覆盖 */
+.mihomo-dialog .el-table {
+  background: transparent !important;
+  color: rgba(255, 255, 255, 0.9);
+  --el-table-bg-color: transparent;
+  --el-table-tr-bg-color: transparent;
+  --el-table-header-bg-color: rgba(255, 255, 255, 0.06);
+  --el-table-row-hover-bg-color: rgba(255, 255, 255, 0.06);
+  --el-table-border-color: rgba(255, 255, 255, 0.1);
+  --el-table-text-color: rgba(255, 255, 255, 0.85);
+  --el-table-header-text-color: rgba(255, 255, 255, 0.7);
+}
+.mihomo-dialog .el-table th.el-table__cell,
+.mihomo-dialog .el-table td.el-table__cell {
+  background: transparent !important;
+  border-bottom-color: rgba(255, 255, 255, 0.08) !important;
+}
+.mihomo-dialog .el-table tr {
+  background: transparent !important;
+}
+.mihomo-dialog .el-table--enable-row-hover .el-table__body tr:hover > td.el-table__cell {
+  background: rgba(255, 255, 255, 0.06) !important;
+}
+.mihomo-dialog .el-table::before,
+.mihomo-dialog .el-table::after,
+.mihomo-dialog .el-table__inner-wrapper::before,
+.mihomo-dialog .el-table__inner-wrapper::after {
+  background: rgba(255, 255, 255, 0.1) !important;
+}
+
+/* 默认按钮（无 type）的玻璃风格 */
+.mihomo-dialog .el-button {
+  border-color: rgba(255, 255, 255, 0.25);
+}
+.mihomo-dialog .el-button:not(.el-button--primary):not(.el-button--success):not(.el-button--warning):not(.el-button--danger):not(.el-button--info) {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.25);
+  color: rgba(255, 255, 255, 0.92);
+}
+.mihomo-dialog .el-button:not(.el-button--primary):not(.el-button--success):not(.el-button--warning):not(.el-button--danger):not(.el-button--info):hover {
+  background: rgba(255, 255, 255, 0.22);
+  border-color: rgba(255, 255, 255, 0.45);
+  color: #ffffff;
+}
+
+/* divider - 弱化为细分隔线 + 小字标签 */
+.mihomo-dialog .el-divider {
+  background-color: rgba(255, 255, 255, 0.1);
+  margin-top: 18px;
+  margin-bottom: 10px;
+}
+.mihomo-dialog .el-divider__text {
+  background-color: #2a5298;
+  color: rgba(255, 255, 255, 0.55);
+  padding: 0 10px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 1.5px;
+}
+
+/* switch 文字 */
+.mihomo-dialog .el-switch__label {
+  color: rgba(255, 255, 255, 0.5);
+}
+.mihomo-dialog .el-switch__label.is-active {
+  color: #ffffff;
+}
+
+/* progress 文字 */
+.mihomo-dialog .el-progress__text {
+  color: rgba(255, 255, 255, 0.9) !important;
+}
+.mihomo-dialog .el-progress-bar__outer {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+/* tag 在深色背景下保持可读 */
+.mihomo-dialog .el-tag {
+  border-color: rgba(255, 255, 255, 0.18);
+}
+
+@media (max-width: 600px) {
+  .mihomo-dialog .el-tabs__content { padding: 12px 10px; }
+  .mihomo-dialog .mh-status-card,
+  .mihomo-dialog .mh-install-version-card { padding: 12px; margin-bottom: 10px; }
+  .mihomo-dialog .mh-info-grid { grid-template-columns: 1fr; gap: 6px; }
+  .mihomo-dialog .mh-control-row { gap: 6px; }
+}
+
+/* 暗色系统模式 */
+@media (prefers-color-scheme: dark) {
+  .mihomo-dialog.el-dialog {
+    background: linear-gradient(135deg, #0f172a 0%, #1e293b 60%, #334155 100%) !important;
+    border-color: rgba(255, 255, 255, 0.1) !important;
+  }
+  .mihomo-dialog .el-divider__text {
+    background-color: #1e293b;
+  }
+}
+
+/* ============ 数据模式 Select 下拉面板 - 深色玻璃风格 ============ */
+/* el-select 的 popper 会 teleport 到 body，必须在非 scoped 块里定位 */
+.net-select-popper.el-popper {
+  background: linear-gradient(135deg, #1e3c72 0%, #2a5298 60%, #3b82f6 100%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.25) !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4) !important;
+  border-radius: 10px !important;
+  padding: 0 !important;
+}
+.net-select-popper.el-popper .el-select-dropdown {
+  background: transparent;
+  border: none;
+}
+.net-select-popper.el-popper .el-select-dropdown__list {
+  padding: 4px 0;
+}
+.net-select-popper.el-popper .el-select-dropdown__item {
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 13px;
+  height: 32px;
+  line-height: 32px;
+  padding: 0 14px;
+  background: transparent;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.net-select-popper.el-popper .el-select-dropdown__item.is-hovering,
+.net-select-popper.el-popper .el-select-dropdown__item:hover {
+  background: rgba(255, 255, 255, 0.12) !important;
+  color: #ffffff !important;
+}
+.net-select-popper.el-popper .el-select-dropdown__item.is-selected,
+.net-select-popper.el-popper .el-select-dropdown__item.selected {
+  color: #7dd3fc !important;
+  font-weight: 600 !important;
+  background: rgba(255, 255, 255, 0.06) !important;
+}
+.net-select-popper.el-popper .el-select-dropdown__empty {
+  color: rgba(255, 255, 255, 0.55);
+  padding: 12px 0;
+}
+/* popper 小箭头 */
+.net-select-popper.el-popper .el-popper__arrow::before {
+  background: #2a5298 !important;
+  border: 1px solid rgba(255, 255, 255, 0.25) !important;
+}
+
+@media (prefers-color-scheme: dark) {
+  .net-select-popper.el-popper {
+    background: linear-gradient(135deg, #0f172a 0%, #1e293b 60%, #334155 100%) !important;
+  }
+  .net-select-popper.el-popper .el-popper__arrow::before {
+    background: #1e293b !important;
   }
 }
 </style>
