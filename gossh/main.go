@@ -31,11 +31,12 @@ import (
 var version = "dev"
 
 const (
-	GithubRepo            = "Jack-bin183/WebSSH-u60pro"
-	updateConnectTimeout  = 3 * time.Second
-	updateVersionFileURL  = "https://raw.githubusercontent.com/" + GithubRepo + "/version/version.txt"
-	updateReleaseURL      = "https://github.com/" + GithubRepo + "/releases/latest"
-	updateDownloadBaseURL = "https://github.com/" + GithubRepo + "/releases/latest/download/webssh_"
+	GithubRepo             = "Jack-bin183/WebSSH-u60pro"
+	updateConnectTimeout   = 3 * time.Second
+	updateVersionFileURL   = "https://raw.githubusercontent.com/" + GithubRepo + "/version/version.txt"
+	updateChangelogFileURL = "https://raw.githubusercontent.com/" + GithubRepo + "/version/changelog.txt"
+	updateReleaseURL       = "https://github.com/" + GithubRepo + "/releases/latest"
+	updateDownloadBaseURL  = "https://github.com/" + GithubRepo + "/releases/latest/download/webssh_"
 )
 
 type GithubAsset struct {
@@ -192,6 +193,33 @@ func getLatestVersionFromFile(proxies []string) (string, error) {
 	return "", fmt.Errorf("已尝试代理和 raw.githubusercontent.com 兜底: %w", lastErr)
 }
 
+// getLatestChangelogFromFile 从 version 分支拉取 changelog.txt 内容，失败时返回空串（不阻塞更新检查）
+func getLatestChangelogFromFile(proxies []string) string {
+	urls := buildUpdateTryURLs(updateChangelogFileURL, proxies)
+	client := updateHTTPClient()
+	for _, u := range urls {
+		req, err := http.NewRequest(http.MethodGet, u, nil)
+		if err != nil {
+			continue
+		}
+		resp, err := client.Do(req)
+		if err != nil {
+			continue
+		}
+		if resp.StatusCode != http.StatusOK {
+			resp.Body.Close()
+			continue
+		}
+		data, err := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
+		resp.Body.Close()
+		if err != nil {
+			continue
+		}
+		return strings.TrimSpace(string(data))
+	}
+	return ""
+}
+
 func isSafeUpdateVersion(v string) bool {
 	if len(v) > 128 {
 		return false
@@ -252,6 +280,7 @@ func UpdateVersionHandler(c *gin.Context) {
 		HasUpdate:      currentVersion != latestVersion,
 		ReleaseURL:     updateReleaseURL,
 		ReleaseName:    "WebSSH " + latestVersion,
+		ReleaseBody:    getLatestChangelogFromFile(updateProxies),
 		ProxyURLs:      append([]string(nil), PROXIES...),
 		AssetName:      asset.Name,
 		AssetSize:      asset.Size,

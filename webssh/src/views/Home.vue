@@ -182,6 +182,11 @@
                   <div><label>文件大小</label><strong>{{ formatUpdateSize(updateVersionInfo.asset_size) }}</strong></div>
                 </div>
 
+                <div v-if="updateVersionInfo.has_update && updateVersionInfo.release_body" class="update-confirm-changelog">
+                  <div class="update-confirm-changelog-title">更新内容</div>
+                  <pre class="update-confirm-changelog-body">{{ updateVersionInfo.release_body }}</pre>
+                </div>
+
                 <el-form label-position="top" class="update-proxy-form">
                   <el-form-item label="代理方式">
                     <el-radio-group v-model="updateProxyMode">
@@ -3258,6 +3263,39 @@ const terminalBackground = computed(() => {
   color: #475569;
   font-size: 13px;
   line-height: 1.55;
+}
+
+:global(.update-confirm-changelog) {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 6px;
+  padding: 12px;
+  border-radius: 12px;
+  background: #f8fafc;
+  box-shadow: 0 0 0 1px rgba(148, 163, 184, 0.16);
+}
+
+:global(.update-confirm-changelog-title) {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+}
+
+:global(.update-confirm-changelog-body) {
+  margin: 0;
+  max-height: 220px;
+  overflow: auto;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #0f172a;
+  color: #e2e8f0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .permission-grid {

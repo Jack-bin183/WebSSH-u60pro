@@ -13,11 +13,13 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1. 拉代码
+      # 1. 拉代码（需要完整历史和 tags 才能生成 changelog）
       - name: Checkout
         uses: actions/checkout@v4
         with:
           token: ${{ secrets.PERSONAL_TOKEN }}
+          fetch-depth: 0
+          fetch-tags: true
 
       # 2. 生成版本号（UTC+8）
       - name: Generate version
@@ -27,6 +29,32 @@ jobs:
           echo "VERSION=$VERSION" >> $GITHUB_ENV
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "当前版本: $VERSION"
+
+      # 2.5 生成更新日志（基于上次 release tag 到当前 HEAD 的提交）
+      - name: Generate changelog
+        run: |
+          # 此时本次的 tag 还没创建，所以最新已有 tag 就是上一个版本
+          PREV_TAG=$(git tag --list | sort -r | head -n 1)
+          BUILD_TIME=$(TZ=Asia/Shanghai date '+%Y-%m-%d %H:%M:%S')
+          {
+            echo "## ${VERSION}"
+            echo ""
+            echo "构建时间: ${BUILD_TIME}"
+            echo ""
+            if [ -n "$PREV_TAG" ] && [ "$(git rev-parse "$PREV_TAG" 2>/dev/null || echo NA)" != "$(git rev-parse HEAD)" ]; then
+              echo "### 与上一版本（${PREV_TAG}）相比"
+              echo ""
+              git log --no-merges --pretty=format:"- %s (%h) <%an>" "${PREV_TAG}..HEAD"
+              echo ""
+            else
+              echo "### 本次提交"
+              echo ""
+              git log -1 --pretty=format:"- %s (%h) <%an>%n%n%b" HEAD
+              echo ""
+            fi
+          } > changelog.txt
+          echo "--- changelog.txt ---"
+          cat changelog.txt
 
       # 3. Node 环境
       - name: Setup Node
@@ -84,11 +112,12 @@ jobs:
         run: |
           echo "${VERSION}" > version.txt
 
-      # 10. 推送 version.txt 到独立 version 分支
-      - name: Push version.txt to version branch
+      # 10. 推送 version.txt + changelog.txt 到独立 version 分支
+      - name: Push version.txt & changelog.txt to version branch
         run: |
           mkdir -p /tmp/version-branch
           cp version.txt /tmp/version-branch/version.txt
+          cp changelog.txt /tmp/version-branch/changelog.txt
 
           cd /tmp/version-branch
 
@@ -97,18 +126,19 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
           git checkout -b version
-          git add version.txt
-          git commit -m "update version.txt to ${VERSION}"
+          git add version.txt changelog.txt
+          git commit -m "update version & changelog to ${VERSION}"
 
           git remote add origin https://x-access-token:${{ secrets.PERSONAL_TOKEN }}@github.com/${{ github.repository }}.git
           git push -f origin version
 
-      # 11. 创建 Release（直接上传原始文件）
+      # 11. 创建 Release（直接上传原始文件，并把 changelog 作为 release body）
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ steps.version.outputs.version }}
           name: ${{ steps.version.outputs.version }}
+          body_path: changelog.txt
           draft: false
           prerelease: false
           files: |
