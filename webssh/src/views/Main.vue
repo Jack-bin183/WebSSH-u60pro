@@ -146,7 +146,6 @@
       <div class="error-icon">⚠️</div>
       <h3>加载失败</h3>
       <p style="margin: 10px 0">{{ error }}</p>
-      <button class="btn btn-danger" @click="refresh">重试</button>
     </div>
 
     <!-- 数据展示 -->
@@ -156,10 +155,10 @@
         <div class="card" v-if="networkType === '5G'">
           <div class="card-header">
             <h3 class="hd">
-              <img style="width: 24px" :src="NetworkIcon" alt="" />NR 5G 信号
+              <img style="width: 24px" :src="NetworkIcon" alt="" />5G 信号
             </h3>
             <div class="card-tags">
-              <span class="tag success">已激活</span>
+              <span :class="['tag', 'conn-status', connectStatusTag.className]">{{ connectStatusTag.text }}</span>
               <span :class="['tag', getNetworkSignalStatus('nr').className]">
                 信号{{ getNetworkSignalStatus('nr').text }}
               </span>
@@ -407,10 +406,10 @@
         <div class="card" v-if="networkType === '4G'">
           <div class="card-header">
             <h3 class="hd">
-              <img style="width: 24px" :src="NetworkIcon" alt="" />LTE 信号
+              <img style="width: 24px" :src="NetworkIcon" alt="" />4G 信号
             </h3>
             <div class="card-tags">
-              <span class="tag success">已激活</span>
+              <span :class="['tag', 'conn-status', connectStatusTag.className]">{{ connectStatusTag.text }}</span>
               <span :class="['tag', getNetworkSignalStatus('lte').className]">
                 信号{{ getNetworkSignalStatus('lte').text }}
               </span>
@@ -898,7 +897,7 @@
 
             <div class="info-item">
               <span class="label">信号强度</span>
-              <div class="signal-bars">
+              <div :class="['signal-bars', signalLevelClass]">
                 <div
                   v-for="n in 5"
                   :key="n"
@@ -1998,21 +1997,17 @@ const batchRequests = [
   wanRequest,
   wan6Request,
   trafficRequest,
-  // deviceInfoRequest,
+  deviceInfoRequest,
   cpuTempRequest,
   simInfoRequest,
   simInfo2Request,
   wifiStatusRequest,
   sysVersionRequest,
   usbStatusRequest,
-  // wwanRequest,
-  // lanUserListRequest,
-]
-const batchRequests2 = [
-  deviceInfoRequest,
   wwanRequest,
-  lanUserListRequest
+  lanUserListRequest,
 ]
+
 
 // 计算属性
 const dataReady = computed(() => !!data.value);
@@ -2027,12 +2022,34 @@ const connectionStatusText = computed(() => {
   if (connectionLoaded.value) return '连接失败';
   return '未加载';
 });
+
+// WAN 拨号连接状态（wwanInfo.connect_status）→ 信号卡片上的 tag 文案与配色，
+// 替换原先固定的“已激活”，真实反映 IPv4/IPv6 的连接情况。
+const connectStatusTag = computed<{ text: string; className: string }>(() => {
+  switch (wwanInfo.value.connect_status) {
+    case 'ipv4_ipv6_connected': return { text: 'IPv4/IPv6', className: 'success' };
+    case 'ipv4_connected':      return { text: 'IPv4',      className: 'success' };
+    case 'ipv6_connected':      return { text: 'IPv6',      className: 'success' };
+    case 'connecting':          return { text: '连接中',    className: 'warning' };
+    case 'disconnected':        return { text: '未连接',    className: 'danger'  };
+    default:                    return { text: '未知',      className: 'unknown' };
+  }
+});
 const d = computed(() => data.value || {});
 
 const signalBars = computed(() => {
   const bars = Number(d.value.signalbar || 0);
   if (Number.isNaN(bars)) return 0;
   return Math.max(0, Math.min(5, bars));
+});
+
+// 信号强度分级，用于给信号条整体着色（弱=红 / 中=橙 / 强=绿）
+const signalLevelClass = computed(() => {
+  const b = signalBars.value;
+  if (b <= 0) return 'level-none';
+  if (b <= 2) return 'level-weak';
+  if (b === 3) return 'level-medium';
+  return 'level-strong';
 });
 
 // 格式化函数
@@ -2472,12 +2489,12 @@ async function fetchAllData() {
     wanData.value     = resultMap[3]
     wan6Data.value    = resultMap[4]
     trafficData.value = resultMap[5]
-    // deviceInfo.value  = resultMap[6]
+    deviceInfo.value  = resultMap[6]
     cpuTemp.value     = resultMap[7]
     simInfo.value     = resultMap[8]
     simInfo2.value    = resultMap[9]
-    // wwanInfo.value    = resultMap[10]
-    // lanUserList.value = resultMap[11]
+    wwanInfo.value    = resultMap[10]
+    lanUserList.value = resultMap[11]
     wifiStatus.value = resultMap[14]
     sysVersion.value = resultMap[15]?.values ?? sysVersion.value
     usbStatus.value = resultMap[16] ?? usbStatus.value
@@ -2490,29 +2507,6 @@ async function fetchAllData() {
     connectionLoaded.value = true
     loading.value = false
   }
-}
-async function fetchAllData2() {
-  loading.value = true
-  error.value = null
-  try {
-    const resultMap = await callUbusBatch(batchRequests2)
-    deviceInfo.value  = resultMap[6]
-    wwanInfo.value    = resultMap[10]
-    lanUserList.value = resultMap[11]
-  } catch (e: any) {
-    error.value = e?.message || '请求失败'
-    console.error('数据获取失败:', e)
-  } finally {
-    loading.value = false
-  }
-}
-
-
-function refresh() {
-  fetchAllData().then((res) => {
-    ElMessage.success('数据已刷新');
-  });
-  fetchAllData2();
 }
 
 function toggleAutoRefresh() {
@@ -2532,9 +2526,6 @@ function startAutoRefresh() {
   refreshTimer = window.setInterval(() => {
     fetchAllData();
   }, refreshInterval.value);
-  refreshTimer2 = window.setInterval(() => {
-    fetchAllData2();
-  }, refreshInterval2.value);
 }
 
 function stopAutoRefresh() {
@@ -3131,26 +3122,38 @@ async function openDeviceDialog() {
   }
 }
 
-// 弹窗打开时锁住底层页面滚动（index.html 把 html/body 都设为 height:100%,
-// Element Plus 默认的 lock-scroll 只锁 body，touch 滚动会发生在 html 上锁不住）
+// 弹窗打开时锁住底层页面滚动。index.html 把 html/body/#app 都设为 height:100%,
+// 整页滚动发生在 html/window 上。若直接给 html 设 overflow:hidden,浏览器会把滚动位置
+// 强制归零（整页跳到顶部），且关闭后无法恢复——这正是“点开弹窗页面跳回顶部”的根因。
+// 改用「固定 body + 记录/还原 scrollY」：锁定时把 body 设为 position:fixed 并上移 scrollY,
+// 既挡住背景滚动又保留视觉位置；关闭时还原样式并 scrollTo 回原位。
+let lockedScrollY = 0;
 watch([deviceDialogVisible, mihomoDialogVisible], ([w, m]) => {
   const anyOpen = w || m;
-  const html = document.documentElement;
   const body = document.body;
   if (anyOpen) {
-    html.style.overflow = 'hidden';
+    lockedScrollY = window.scrollY || document.documentElement.scrollTop || 0;
+    body.style.position = 'fixed';
+    body.style.top = `-${lockedScrollY}px`;
+    body.style.left = '0';
+    body.style.right = '0';
+    body.style.width = '100%';
+    body.style.height = 'auto'; // 覆盖 index.html 的 height:100%，否则 fixed 后超出一屏的内容会被裁掉
     body.style.overflow = 'hidden';
-    body.style.touchAction = 'none';
   } else {
-    html.style.overflow = '';
+    body.style.position = '';
+    body.style.top = '';
+    body.style.left = '';
+    body.style.right = '';
+    body.style.width = '';
+    body.style.height = '';
     body.style.overflow = '';
-    body.style.touchAction = '';
+    window.scrollTo(0, lockedScrollY);
   }
 });
 
 onMounted(() => {
   fetchAllData();
-  fetchAllData2();
   if (autoRefresh.value) {
     startAutoRefresh();
   }
@@ -3165,10 +3168,15 @@ onMounted(() => {
 onUnmounted(() => {
   stopAutoRefresh();
   stopMihomoAllPolls();
-  // 兜底还原（防止组件卸载时仍残留锁定状态）
-  document.documentElement.style.overflow = '';
-  document.body.style.overflow = '';
-  document.body.style.touchAction = '';
+  // 兜底还原（防止组件卸载时仍残留锁定样式）
+  const body = document.body;
+  body.style.position = '';
+  body.style.top = '';
+  body.style.left = '';
+  body.style.right = '';
+  body.style.width = '';
+  body.style.height = '';
+  body.style.overflow = '';
 });
 </script>
 
@@ -3333,6 +3341,12 @@ onUnmounted(() => {
 .net-select :deep(.el-select__caret),
 .net-select :deep(.el-icon) {
   color: rgba(255, 255, 255, 0.75);
+}
+/* iOS Safari/Chrome 在聚焦字号 < 16px 的表单控件时会自动放大页面，且选完不会自动缩回。
+   el-select 真正聚焦的是内部隐藏 <input>，把它字号提到 16px 即可阻止放大；
+   可见文字渲染在 .el-select__selected-item 上，仍保持 11px，外观不变。 */
+.net-select :deep(.el-select__input) {
+  font-size: 16px;
 }
 
 
@@ -3869,6 +3883,11 @@ onUnmounted(() => {
   letter-spacing: 0.5px;
 }
 
+/* 连接状态 tag 含 IPv4/IPv6 等大小写敏感的写法，关掉统一大写以免显示成 IPV4 */
+.tag.conn-status {
+  text-transform: none;
+}
+
 .tag.success {
   background: rgba(54, 237, 69, 0.2);
   color: #75f655;
@@ -4149,9 +4168,10 @@ onUnmounted(() => {
 .bar {
   width: 5px;
   height: 6px;
-  background: rgba(255, 255, 255, 0.25);
-  border-radius: 2px;
-  transition: height 0.2s ease, background 0.2s ease;
+  background: rgba(255, 255, 255, 0.16);
+  border-radius: 2.5px 2.5px 1px 1px; /* 顶部更圆，更像信号图标 */
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+  transition: height 0.2s ease, background 0.25s ease, box-shadow 0.25s ease;
 }
 
 .full-bar {
@@ -4174,20 +4194,18 @@ onUnmounted(() => {
   height: 18px;
 }
 
-.bar.active:nth-child(1) {
-  background: #68d391;
+/* 激活的信号条按整体强度着色，并带同色辉光，告别一刀切的纯绿 */
+.signal-bars.level-weak .bar.active {
+  background: linear-gradient(180deg, #fca5a5, #ef4444);
+  box-shadow: 0 0 6px rgba(239, 68, 68, 0.5);
 }
-.bar.active:nth-child(2) {
-  background: #68d391;
+.signal-bars.level-medium .bar.active {
+  background: linear-gradient(180deg, #fcd34d, #f59e0b);
+  box-shadow: 0 0 6px rgba(245, 158, 11, 0.45);
 }
-.bar.active:nth-child(3) {
-  background: #68d391;
-}
-.bar.active:nth-child(4) {
-  background: #68d391;
-}
-.bar.active:nth-child(5) {
-  background: #68d391;
+.signal-bars.level-strong .bar.active {
+  background: linear-gradient(180deg, #86efac, #22c55e);
+  box-shadow: 0 0 7px rgba(34, 197, 94, 0.5);
 }
 
 /* ========= 电池图标 ========= */
