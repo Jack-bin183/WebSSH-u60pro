@@ -1,0 +1,18 @@
+## 20260529_233455
+
+构建时间: 2026-05-29 23:34:55
+
+### 与上一版本（latest-data）相比
+
+- feat: 优化网络信号展示，动态更新连接状态标签，增强信号强度视觉效果 (e25068f) <lostfawn>
+- 优化弹窗 UI，支持查看接入设备，美化电池图标 (fdcf7a6) <lostfawn>
+- feat: 添加更新内容展示功能，优化更新确认界面，支持显示 changelog (f0af287) <lostfawn>
+- feat: 添加 mihomo 前置条件检查和配置校验功能，优化日志管理，增加数据模式切换功能 (307ecfd) <lostfawn>
+- fix: 修复控制面板链接条件，确保仅在有 API 版本时显示 (0dccf0e) <lostfawn>
+- feat: 添加代理测速功能，优化下载文件时的代理选择逻辑 (695c7d7) <lostfawn>
+- feat: 添加开机自启功能的条件渲染，确保仅在有二进制版本时显示相关选项 (2efc7ee) <lostfawn>
+- fix: 修复 checkMihomoAPI 函数中的 URL 解析逻辑，确保正确处理无 scheme 的情况；更新 has_update 逻辑以准确反映版本状态 (c5b88eb) <lostfawn>
+- feat: 更新 README 文档，添加 Mihomo 透明代理功能说明；修复 Mihomo 版本检查逻辑及 UI 文本 (0e21bfd) <lostfawn>
+- fix: 更新 Mihomo 数据文件描述，修正内核文件相关信息 (dfce263) <lostfawn>
+- feat: 添加 Mihomo 自启功能及相关 API 接口 (1f464c8) <lostfawn>
+- Remove unused assets and files from the UI, including images, favicons, and HTML files, to streamline the project structure and reduce unnecessary bloat. (7fa24f4) <lostfawn>
