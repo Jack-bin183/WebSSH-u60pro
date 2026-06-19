@@ -1,0 +1,45 @@
+## 20260619_145316
+
+构建时间: 2026-06-19 14:53:16
+
+### 与上一版本（latest-data）相比
+
+- feat: 添加短信已读标记功能，优化短信转发处理逻辑 (152f501) <lostfawn>
+- fix: 修复样式文件末尾缺少换行符，优化代码格式 (6d13eee) <lostfawn>
+- feat: 添加 WiFi 状态轮询功能，优化设备状态管理 (77cb13a) <lostfawn>
+- IOS PAW 兼容 (b8c954b) <lostfawn>
+- feat: 添加全选和全不选功能以优化频段选择 (478c2c5) <lostfawn>
+- feat: 添加短信转发批处理支持，优化消息处理逻辑 (ed4ddff) <lostfawn>
+- fix: 修复短信内容格式，移除多余换行符 (5e41eb2) <lostfawn>
+- feat: 添加 mihomo 代理支持，优化更新文件下载逻辑 (35ad7de) <lostfawn>
+- feat: 调整SIM卡信息展示顺序，确保IMSI信息在IMEI信息之后 (0fd3a83) <lostfawn>
+- feat: 添加SIM卡号信息显示，移除WLAN MAC地址展示 (b90ffe8) <lostfawn>
+- feat: 优化短信转发界面，调整开关样式和提示信息 (d5c79da) <lostfawn>
+- feat: 优化短信转发内容格式，移除发送者信息 (b6d66de) <lostfawn>
+- feat: 添加短信转发功能，包括状态管理和配置接口 (1bad8a8) <lostfawn>
+- feat: 添加系统工具功能，包括短信列表和转发，rc.local 文件管理 (0d7e271) <lostfawn>
+- feat: 优化测速功能，调整最大并发线程数和测速地址提示信息 (ac4bc49) <lostfawn>
+- feat: 添加默认测速链接回填功能，优化用户体验 (814bd9a) <lostfawn>
+- feat: 优化测速功能，添加速度曲线图表和实时数据展示 (d89aa8d) <lostfawn>
+- feat: 修改流量测速按钮图标文本为 'SPD' (401fedd) <lostfawn>
+- feat: 优化测速功能，采用固定节拍采样和滑动平均提升速度显示准确性 (bf2afec) <lostfawn>
+- feat: 添加信号强度和协商速率显示功能，优化无线设备信息展示 (1e37c99) <lostfawn>
+- feat: 添加流量测速功能，支持多线程下载和循环测速，优化测速体验 (977c2c7) <lostfawn>
+- feat: 优化测速功能，增加并发流数和预热时长，提升测速准确性 (ef6e2f9) <lostfawn>
+- feat: 更新网络制式选择标签为 '5G/4G/3G' (bbc5dd2) <lostfawn>
+- feat: 添加内网测速功能，支持动态调整测试大小并优化请求处理 (4675422) <lostfawn>
+- Implement new feature for user authentication and improve error handling (ed6d8e7) <lostfawn>
+- feat: 添加 WiFi 设置自动启动功能，确保设备重启后恢复 WiFi 运行时设置 (2c9cff1) <lostfawn>
+- feat: 添加 wifi 设置和网络设置 支持锁频，锁小区，支持设置 wifi 功率，国家码 (e6e3734) <lostfawn>
+- feat: 优化网络信号展示，动态更新连接状态标签，增强信号强度视觉效果 (e25068f) <lostfawn>
+- 优化弹窗 UI，支持查看接入设备，美化电池图标 (fdcf7a6) <lostfawn>
+- feat: 添加更新内容展示功能，优化更新确认界面，支持显示 changelog (f0af287) <lostfawn>
+- feat: 添加 mihomo 前置条件检查和配置校验功能，优化日志管理，增加数据模式切换功能 (307ecfd) <lostfawn>
+- fix: 修复控制面板链接条件，确保仅在有 API 版本时显示 (0dccf0e) <lostfawn>
+- feat: 添加代理测速功能，优化下载文件时的代理选择逻辑 (695c7d7) <lostfawn>
+- feat: 添加开机自启功能的条件渲染，确保仅在有二进制版本时显示相关选项 (2efc7ee) <lostfawn>
+- fix: 修复 checkMihomoAPI 函数中的 URL 解析逻辑，确保正确处理无 scheme 的情况；更新 has_update 逻辑以准确反映版本状态 (c5b88eb) <lostfawn>
+- feat: 更新 README 文档，添加 Mihomo 透明代理功能说明；修复 Mihomo 版本检查逻辑及 UI 文本 (0e21bfd) <lostfawn>
+- fix: 更新 Mihomo 数据文件描述，修正内核文件相关信息 (dfce263) <lostfawn>
+- feat: 添加 Mihomo 自启功能及相关 API 接口 (1f464c8) <lostfawn>
+- Remove unused assets and files from the UI, including images, favicons, and HTML files, to streamline the project structure and reduce unnecessary bloat. (7fa24f4) <lostfawn>
