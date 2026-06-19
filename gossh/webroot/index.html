@@ -3,9 +3,47 @@
   <head>
     <meta charset="UTF-8">
     <link rel="icon" href="./favicon.ico">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="apple-touch-icon" href="apple-touch-icon.png">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#315697">
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0f172a">
+    <meta name="color-scheme" content="light dark">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="WebSSH">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <title>WebSSH for U60Pro</title>
     <style>
+      :root {
+        --app-safe-top: env(safe-area-inset-top, 0px);
+        --app-safe-right: env(safe-area-inset-right, 0px);
+        --app-safe-bottom: env(safe-area-inset-bottom, 0px);
+        --app-safe-left: env(safe-area-inset-left, 0px);
+      }
+
+      /* 添加到主屏幕的 PWA（全屏 standalone）下，状态栏会浮在内容之上，
+         且 iOS 常把顶部安全区报告为 0，导致内容顶到状态栏。
+         这里给顶部安全区设一个下限，保证留出状态栏空间；浏览器内不受影响。
+         html.ios-pwa 是 JS 兜底：部分 iOS 版本的主屏幕 Web App
+         不匹配 display-mode 媒体查询，但 navigator.standalone 为 true。 */
+      /* iOS 添加到主屏幕的 Web App（html.ios-pwa 由下方脚本检测添加）：
+         实测该场景下 env(safe-area-inset-top) 求值为 0，CSS 变量链路不生效，
+         只能在 html 上用固定 padding 给状态栏留位。
+         box-sizing 让 60px 计入 100% 高度，避免页面恒定多出 60px 滚动。
+         状态栏背后露出的是 html 背景，需按亮/暗模式对齐页面渐变起点。 */
+      html.ios-pwa {
+        padding-top: 60px;
+        box-sizing: border-box;
+        background: #315697; /* Main 页浅色渐变起点 */
+      }
+
+      @media (prefers-color-scheme: dark) {
+        html.ios-pwa {
+          background: #0f172a; /* 夜间模式深色渐变起点，需同等优先级覆盖上面的浅色 */
+        }
+      }
+
       html,
       body,
       #app {
@@ -14,9 +52,34 @@
         padding: 0px;
         font-family: "Helvetica Neue", Helvetica, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "微软雅黑", Arial, sans-serif;
       }
+
+      html {
+        background: #315697;
+      }
+
+      /* 夜间模式：html 背景在页面加载完成前和过滚动回弹区域可见，
+         跟随 Main 页深色渐变的起始色，避免露出浅色蓝 */
+      @media (prefers-color-scheme: dark) {
+        html {
+          background: #0f172a;
+        }
+      }
+
+      body {
+        overflow-x: hidden;
+        overscroll-behavior-y: none;
+        -webkit-tap-highlight-color: transparent;
+      }
     </style>
-    <script type="module" crossorigin src="./assets/index-Cg6n6FUa.js"></script>
-    <link rel="stylesheet" crossorigin href="./assets/index-HV0JzjdQ.css">
+    <script>
+      // iOS 主屏幕 Web App 的 navigator.standalone 为 true，
+      // 兜底处理不匹配 display-mode 媒体查询的旧版 iOS
+      if (navigator.standalone) {
+        document.documentElement.classList.add("ios-pwa");
+      }
+    </script>
+    <script type="module" crossorigin src="./assets/index-BeGiKzb2.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-DHEWMTk3.css">
   </head>
 
   <body>

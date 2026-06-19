@@ -258,12 +258,18 @@ function handleLoginSuccess(res: ResponseData) {
 <style scoped>
 .login-container {
   min-height: 100vh;
+  min-height: 100dvh;
   height: 100vh;
+  height: 100dvh;
   background: linear-gradient(135deg, #1a365d 0%, #2d3748 100%);
   display: flex;
   justify-content: center;
   align-items: flex-start;
-  padding: 20px;
+  padding:
+    calc(20px + var(--app-safe-top, 0px))
+    calc(20px + var(--app-safe-right, 0px))
+    calc(20px + var(--app-safe-bottom, 0px))
+    calc(20px + var(--app-safe-left, 0px));
   overflow: hidden;
   box-sizing: border-box;
 }
@@ -390,7 +396,11 @@ function handleLoginSuccess(res: ResponseData) {
 /* 响应式布局 */
 @media screen and (max-width: 768px) {
   .login-container {
-    padding: 15px;
+    padding:
+      calc(15px + var(--app-safe-top, 0px))
+      calc(15px + var(--app-safe-right, 0px))
+      calc(15px + var(--app-safe-bottom, 0px))
+      calc(15px + var(--app-safe-left, 0px));
   }
 
   .login-box {
@@ -421,7 +431,11 @@ function handleLoginSuccess(res: ResponseData) {
 @media screen and (max-height: 480px) {
   .login-container {
     align-items: flex-start;
-    padding: 10px;
+    padding:
+      calc(10px + var(--app-safe-top, 0px))
+      calc(10px + var(--app-safe-right, 0px))
+      calc(10px + var(--app-safe-bottom, 0px))
+      calc(10px + var(--app-safe-left, 0px));
   }
 
   .login-box {

@@ -146,78 +146,101 @@ func getLatestVersionFromFile(proxies []string) (string, error) {
 	client := updateHTTPClient()
 	var lastErr error
 
+	if proxyURL, ok := service.DetectMihomoHTTPProxy(updateVersionFileURL); ok {
+		latestVersion, err := fetchLatestVersionWithClient(updateHTTPClientWithProxy(proxyURL), updateVersionFileURL)
+		if err == nil {
+			return latestVersion, nil
+		}
+		lastErr = err
+	}
+
 	for _, u := range buildUpdateTryURLs(updateVersionFileURL, proxies) {
-		req, err := http.NewRequest(http.MethodGet, u, nil)
-		if err != nil {
-			lastErr = err
-			continue
+		latestVersion, err := fetchLatestVersionWithClient(client, u)
+		if err == nil {
+			return latestVersion, nil
 		}
-
-		req.Header.Set("User-Agent", "WebSSH-u60pro-Updater")
-
-		resp, err := client.Do(req)
-		if err != nil {
-			lastErr = err
-			continue
-		}
-
-		if resp.StatusCode != http.StatusOK {
-			lastErr = fmt.Errorf("%s 返回异常: %s", u, resp.Status)
-			resp.Body.Close()
-			continue
-		}
-
-		data, err := io.ReadAll(io.LimitReader(resp.Body, 1024))
-		resp.Body.Close()
-		if err != nil {
-			lastErr = err
-			continue
-		}
-
-		latestVersion := strings.TrimSpace(string(data))
-		if latestVersion == "" {
-			lastErr = fmt.Errorf("version.txt 内容为空")
-			continue
-		}
-		if !isSafeUpdateVersion(latestVersion) {
-			lastErr = fmt.Errorf("version.txt 版本号格式不正确: %s", latestVersion)
-			continue
-		}
-
-		return latestVersion, nil
+		lastErr = err
 	}
 
 	if lastErr == nil {
 		lastErr = fmt.Errorf("没有可用的更新线路")
 	}
-	return "", fmt.Errorf("已尝试代理和 raw.githubusercontent.com 兜底: %w", lastErr)
+	return "", fmt.Errorf("已尝试 mihomo、代理和 raw.githubusercontent.com 兜底: %w", lastErr)
+}
+
+func fetchLatestVersionWithClient(client *http.Client, rawURL string) (string, error) {
+	req, err := http.NewRequest(http.MethodGet, rawURL, nil)
+	if err != nil {
+		return "", err
+	}
+
+	req.Header.Set("User-Agent", "WebSSH-u60pro-Updater")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", err
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		resp.Body.Close()
+		return "", fmt.Errorf("%s 返回异常: %s", rawURL, resp.Status)
+	}
+
+	data, err := io.ReadAll(io.LimitReader(resp.Body, 1024))
+	resp.Body.Close()
+	if err != nil {
+		return "", err
+	}
+
+	latestVersion := strings.TrimSpace(string(data))
+	if latestVersion == "" {
+		return "", fmt.Errorf("version.txt 内容为空")
+	}
+	if !isSafeUpdateVersion(latestVersion) {
+		return "", fmt.Errorf("version.txt 版本号格式不正确: %s", latestVersion)
+	}
+
+	return latestVersion, nil
 }
 
 // getLatestChangelogFromFile 从 version 分支拉取 changelog.txt 内容，失败时返回空串（不阻塞更新检查）
 func getLatestChangelogFromFile(proxies []string) string {
+	if proxyURL, ok := service.DetectMihomoHTTPProxy(updateChangelogFileURL); ok {
+		if changelog := fetchChangelogWithClient(updateHTTPClientWithProxy(proxyURL), updateChangelogFileURL); changelog != "" {
+			return changelog
+		}
+	}
+
 	urls := buildUpdateTryURLs(updateChangelogFileURL, proxies)
 	client := updateHTTPClient()
 	for _, u := range urls {
-		req, err := http.NewRequest(http.MethodGet, u, nil)
-		if err != nil {
-			continue
+		if changelog := fetchChangelogWithClient(client, u); changelog != "" {
+			return changelog
 		}
-		resp, err := client.Do(req)
-		if err != nil {
-			continue
-		}
-		if resp.StatusCode != http.StatusOK {
-			resp.Body.Close()
-			continue
-		}
-		data, err := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
-		resp.Body.Close()
-		if err != nil {
-			continue
-		}
-		return strings.TrimSpace(string(data))
 	}
 	return ""
+}
+
+func fetchChangelogWithClient(client *http.Client, rawURL string) string {
+	req, err := http.NewRequest(http.MethodGet, rawURL, nil)
+	if err != nil {
+		return ""
+	}
+	req.Header.Set("User-Agent", "WebSSH-u60pro-Updater")
+	resp, err := client.Do(req)
+	if err != nil {
+		return ""
+	}
+	if resp.StatusCode != http.StatusOK {
+		resp.Body.Close()
+		return ""
+	}
+	data, err := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
+	resp.Body.Close()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(data))
 }
 
 func isSafeUpdateVersion(v string) bool {
@@ -304,6 +327,10 @@ var PROXIES = []string{
 }
 
 func updateHTTPClient() *http.Client {
+	return updateHTTPClientWithProxy("")
+}
+
+func updateHTTPClientWithProxy(proxyURL string) *http.Client {
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.DialContext = (&net.Dialer{
 		Timeout:   updateConnectTimeout,
@@ -311,6 +338,11 @@ func updateHTTPClient() *http.Client {
 	}).DialContext
 	transport.TLSHandshakeTimeout = updateConnectTimeout
 	transport.ResponseHeaderTimeout = 10 * time.Second
+	if proxyURL != "" {
+		if parsed, err := url.Parse(proxyURL); err == nil {
+			transport.Proxy = http.ProxyURL(parsed)
+		}
+	}
 
 	return &http.Client{Transport: transport}
 }
@@ -409,6 +441,27 @@ func updateAttemptStatus(rawURL string, originalURL string) {
 func downloadFile(ctx context.Context, downloadURL string, savePath string, totalHint int64, proxies []string) error {
 	var lastErr error
 	client := updateHTTPClient()
+	if proxyURL, ok := service.DetectMihomoHTTPProxy(downloadURL); ok {
+		setUpdateStatus(func(status *UpdateDownloadStatus) {
+			status.State = "downloading"
+			status.Msg = "正在通过 mihomo 下载更新文件"
+			status.Mode = "mihomo"
+			status.Domain = strings.TrimPrefix(proxyURL, "http://")
+			status.URL = downloadURL
+			status.Downloaded = 0
+			status.Percent = 0
+		})
+		if err := downloadFileWithClient(ctx, updateHTTPClientWithProxy(proxyURL), downloadURL, savePath, totalHint); err == nil {
+			return nil
+		} else if ctx.Err() != nil {
+			return ctx.Err()
+		} else {
+			lastErr = err
+			setUpdateStatus(func(status *UpdateDownloadStatus) {
+				status.Msg = "mihomo 下载失败，正在尝试内置线路"
+			})
+		}
+	}
 	rankedProxies := service.RankProxiesBySpeed(proxies, downloadURL)
 	for _, u := range buildUpdateTryURLs(downloadURL, rankedProxies) {
 		if err := ctx.Err(); err != nil {
@@ -524,6 +577,96 @@ func downloadFile(ctx context.Context, downloadURL string, savePath string, tota
 	}
 
 	return fmt.Errorf("下载失败，尝试代理和 GitHub 兜底都失败: %v", lastErr)
+}
+
+func downloadFileWithClient(ctx context.Context, client *http.Client, downloadURL string, savePath string, totalHint int64) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, downloadURL, nil)
+	if err != nil {
+		return err
+	}
+
+	req.Header.Set("User-Agent", "WebSSH-u60pro-Updater")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		resp.Body.Close()
+		return fmt.Errorf("HTTP %d", resp.StatusCode)
+	}
+
+	out, err := os.OpenFile(savePath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0755)
+	if err != nil {
+		resp.Body.Close()
+		return err
+	}
+
+	total := totalHint
+	if resp.ContentLength > 0 {
+		total = resp.ContentLength
+	}
+	setUpdateStatus(func(status *UpdateDownloadStatus) {
+		status.Total = total
+		status.Downloaded = 0
+		status.Percent = 0
+		status.Msg = "正在通过 mihomo 下载更新文件"
+	})
+
+	buf := make([]byte, 64*1024)
+	var downloaded int64
+	for {
+		if err := ctx.Err(); err != nil {
+			_ = out.Close()
+			resp.Body.Close()
+			return err
+		}
+		n, readErr := resp.Body.Read(buf)
+		if n > 0 {
+			written, writeErr := out.Write(buf[:n])
+			downloaded += int64(written)
+			setUpdateStatus(func(status *UpdateDownloadStatus) {
+				status.Downloaded = downloaded
+			})
+			if writeErr != nil {
+				err = writeErr
+				break
+			}
+			if written != n {
+				err = io.ErrShortWrite
+				break
+			}
+		}
+		if readErr == io.EOF {
+			break
+		}
+		if readErr != nil {
+			err = readErr
+			break
+		}
+	}
+	resp.Body.Close()
+	out.Close()
+	if err != nil {
+		return err
+	}
+
+	info, err := os.Stat(savePath)
+	if err != nil || info.Size() <= 0 {
+		return fmt.Errorf("下载文件为空")
+	}
+
+	setUpdateStatus(func(status *UpdateDownloadStatus) {
+		status.State = "installing"
+		status.Msg = "下载完成，正在准备替换程序"
+		status.Downloaded = info.Size()
+		if status.Total <= 0 {
+			status.Total = info.Size()
+		}
+		status.Percent = 100
+	})
+	return nil
 }
 
 func createTempUpdateScript(currentBin string, newBin string, logFile string, args []string) (string, error) {
@@ -842,6 +985,8 @@ func initApplication() {
 	service.InitSessionClean()
 	service.InitSshServer()
 	service.InitMihomoAutostart()
+	service.InitSmsForwardAutostart()
+	service.InitWifiSettingsAutostart()
 	fmt.Printf("WebBaseDir:[%s]\n", config.DefaultConfig.WebBaseDir)
 }
 
@@ -891,7 +1036,25 @@ func main() {
 		auth.POST("/api/wifi/psm/get", service.WifiPsmGetHandler)
 		auth.POST("/api/wifi/psm/set", service.WifiPsmSetHandler)
 		auth.POST("/api/wifi/state/set", service.WifiStateSetHandler)
+		auth.GET("/api/device/settings", service.DeviceSettingsGetHandler)
+		auth.PUT("/api/device/settings", service.DeviceSettingsSaveHandler)
+		auth.POST("/api/network/mode", service.NetworkModeSetHandler)
+		auth.POST("/api/network/band/lte", service.NetworkLTEBandLockHandler)
+		auth.POST("/api/network/band/nr", service.NetworkNRBandLockHandler)
+		auth.POST("/api/network/cell/lte", service.NetworkLTECellLockHandler)
+		auth.POST("/api/network/cell/nr", service.NetworkNRCellLockHandler)
+		auth.GET("/api/wifi/settings", service.WifiUciGetHandler)
+		auth.POST("/api/wifi/settings", service.WifiSettingsSetHandler)
 		auth.POST("/api/net/ambr/get", service.NetAmbrGetHandler)
+		auth.GET("/api/speedtest", service.SpeedTestHandler)
+		auth.GET("/api/system/sms", service.SystemSmsListHandler)
+		auth.POST("/api/system/sms/forward", service.SystemSmsForwardHandler)
+		auth.GET("/api/system/sms-forward/status", service.SystemSmsForwardStatusHandler)
+		auth.PUT("/api/system/sms-forward/config", service.SystemSmsForwardConfigHandler)
+		auth.POST("/api/system/sms-forward/control", service.SystemSmsForwardControlHandler)
+		auth.POST("/api/system/sms-forward/autostart", service.SystemSmsForwardAutostartHandler)
+		auth.GET("/api/system/rc-local", service.SystemRcLocalGetHandler)
+		auth.PUT("/api/system/rc-local", service.SystemRcLocalSaveHandler)
 	}
 
 	{ // SSH 连接配置

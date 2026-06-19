@@ -2857,7 +2857,11 @@ const terminalBackground = computed(() => {
 .top-nav-header {
   position: relative;
   height: fit-content;
-  padding: 8px 12px 10px;
+  padding:
+    calc(8px + var(--app-safe-top, 0px))
+    calc(12px + var(--app-safe-right, 0px))
+    10px
+    calc(12px + var(--app-safe-left, 0px));
   background:#315697;
   box-shadow: 0 10px 30px rgba(15, 23, 42, 0.22);
   backdrop-filter: blur(14px);
@@ -2936,7 +2940,7 @@ const terminalBackground = computed(() => {
   
 }
 .nav-anchor-toggle-open {
-  top: 50px;
+  top: calc(50px + var(--app-safe-top, 0px));
 }
 
 .nav-anchor-icon {

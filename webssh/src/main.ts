@@ -90,3 +90,11 @@ axios.interceptors.response.use(
 )
 
 app.mount("#app");
+
+if ("serviceWorker" in navigator && import.meta.env.PROD) {
+    window.addEventListener("load", () => {
+        navigator.serviceWorker.register(new URL("sw.js", window.location.href), { scope: "./" }).catch((err) => {
+            console.warn("Service worker registration failed:", err);
+        });
+    });
+}

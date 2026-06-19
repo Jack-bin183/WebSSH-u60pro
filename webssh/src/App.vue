@@ -98,4 +98,10 @@ onBeforeUnmount(() => {
   background-color: #2b75d6;
 }
 
+@media (max-width: 768px) {
+  .el-message {
+    transform: translate(-50%, 60px) !important;
+  }
+}
+
 </style>

@@ -3,9 +3,33 @@
   <head>
     <meta charset="UTF-8">
     <link rel="icon" href="/favicon.ico">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="apple-touch-icon" href="apple-touch-icon.png">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#315697">
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0f172a">
+    <meta name="color-scheme" content="light dark">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="WebSSH">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <title>WebSSH for U60Pro</title>
     <style>
+      :root {
+        --app-safe-top: 0px;
+      }
+      html.ios-pwa {
+        padding-top: 60px;
+        box-sizing: border-box;
+        background: #315697; /* Main 页浅色渐变起点 */
+      }
+
+      @media (prefers-color-scheme: dark) {
+        html.ios-pwa {
+          background: #263144; /* 夜间模式深色渐变起点，需同等优先级覆盖上面的浅色 */
+        }
+      }
+
       html,
       body,
       #app {
@@ -14,7 +38,32 @@
         padding: 0px;
         font-family: "Helvetica Neue", Helvetica, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "微软雅黑", Arial, sans-serif;
       }
+
+      html {
+        background: #315697;
+      }
+
+      /* 夜间模式：html 背景在页面加载完成前和过滚动回弹区域可见，
+         跟随 Main 页深色渐变的起始色，避免露出浅色蓝 */
+      @media (prefers-color-scheme: dark) {
+        html {
+          background: #0f172a;
+        }
+      }
+
+      body {
+        overflow-x: hidden;
+        overscroll-behavior-y: none;
+        -webkit-tap-highlight-color: transparent;
+      }
     </style>
+    <script>
+      // iOS 主屏幕 Web App 的 navigator.standalone 为 true，
+      // 兜底处理不匹配 display-mode 媒体查询的旧版 iOS
+      if (navigator.standalone) {
+        document.documentElement.classList.add("ios-pwa");
+      }
+    </script>
   </head>
 
   <body>

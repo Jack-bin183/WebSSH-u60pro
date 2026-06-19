@@ -33,6 +33,9 @@ const (
 	mihomoInstallMmShURL    = mihomoDataBaseURL + "mm.sh"
 	mihomoDefaultDir        = "/data/kano_plugins/mihomo"
 	mihomoConnTimeout       = 3 * time.Second
+	mihomoProxyProbeTimeout = 4 * time.Second
+	mihomoProxyCacheTTL     = 60 * time.Second
+	mihomoProxyMissCacheTTL = 15 * time.Second
 )
 
 var mihomoProxies = []string{
@@ -143,6 +146,10 @@ func isMihomoInstallBusy() bool {
 // ─────────────────────────── HTTP 工具 ───────────────────────────
 
 func mihomoHTTPClient() *http.Client {
+	return mihomoHTTPClientWithProxy("")
+}
+
+func mihomoHTTPClientWithProxy(proxyURL string) *http.Client {
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.DialContext = (&net.Dialer{
 		Timeout:   mihomoConnTimeout,
@@ -150,7 +157,167 @@ func mihomoHTTPClient() *http.Client {
 	}).DialContext
 	transport.TLSHandshakeTimeout = mihomoConnTimeout
 	transport.ResponseHeaderTimeout = 10 * time.Second
+	if proxyURL != "" {
+		if parsed, err := url.Parse(proxyURL); err == nil {
+			transport.Proxy = http.ProxyURL(parsed)
+		}
+	}
 	return &http.Client{Transport: transport}
+}
+
+type mihomoHTTPProxyCandidate struct {
+	URL    string
+	Source string
+}
+
+var (
+	mihomoHTTPProxyCacheMu sync.Mutex
+	mihomoHTTPProxyCache   struct {
+		url       string
+		found     bool
+		expiresAt time.Time
+	}
+)
+
+// DetectMihomoHTTPProxy returns a local mihomo HTTP/mixed proxy URL when it can
+// fetch probeURL successfully through that proxy. SOCKS-only ports are skipped
+// because this project uses Go's standard net/http transport.
+func DetectMihomoHTTPProxy(probeURL string) (string, bool) {
+	probeURL = strings.TrimSpace(probeURL)
+	if probeURL == "" {
+		return "", false
+	}
+
+	mihomoHTTPProxyCacheMu.Lock()
+	if time.Now().Before(mihomoHTTPProxyCache.expiresAt) {
+		u := mihomoHTTPProxyCache.url
+		found := mihomoHTTPProxyCache.found
+		mihomoHTTPProxyCacheMu.Unlock()
+		return u, found
+	}
+	mihomoHTTPProxyCacheMu.Unlock()
+
+	for _, candidate := range mihomoHTTPProxyCandidates(getMihomoDir()) {
+		if probeMihomoHTTPProxy(candidate.URL, probeURL) {
+			slog.Info("[mihomo] 使用本机代理下载", "proxy", candidate.URL, "source", candidate.Source)
+			mihomoHTTPProxyCacheMu.Lock()
+			mihomoHTTPProxyCache.url = candidate.URL
+			mihomoHTTPProxyCache.found = true
+			mihomoHTTPProxyCache.expiresAt = time.Now().Add(mihomoProxyCacheTTL)
+			mihomoHTTPProxyCacheMu.Unlock()
+			return candidate.URL, true
+		}
+	}
+	mihomoHTTPProxyCacheMu.Lock()
+	mihomoHTTPProxyCache.url = ""
+	mihomoHTTPProxyCache.found = false
+	mihomoHTTPProxyCache.expiresAt = time.Now().Add(mihomoProxyMissCacheTTL)
+	mihomoHTTPProxyCacheMu.Unlock()
+	return "", false
+}
+
+func mihomoHTTPProxyCandidates(dir string) []mihomoHTTPProxyCandidate {
+	configPorts := parseMihomoHTTPProxyPorts(filepath.Join(dir, "config.yaml"))
+	seen := make(map[int]struct{}, len(configPorts)+2)
+	candidates := make([]mihomoHTTPProxyCandidate, 0, len(configPorts)+2)
+	add := func(port int, source string) {
+		if port <= 0 || port > 65535 {
+			return
+		}
+		if _, ok := seen[port]; ok {
+			return
+		}
+		seen[port] = struct{}{}
+		candidates = append(candidates, mihomoHTTPProxyCandidate{
+			URL:    fmt.Sprintf("http://127.0.0.1:%d", port),
+			Source: source,
+		})
+	}
+	for _, p := range configPorts {
+		add(p.port, p.source)
+	}
+	add(7890, "default")
+	add(7891, "default")
+	return candidates
+}
+
+func parseMihomoHTTPProxyPorts(configPath string) []struct {
+	port   int
+	source string
+} {
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return nil
+	}
+	var ports []struct {
+		port   int
+		source string
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		trim := stripMihomoInlineComment(strings.TrimSpace(line))
+		if trim == "" {
+			continue
+		}
+		for _, key := range []string{"mixed-port", "port"} {
+			prefix := key + ":"
+			if !strings.HasPrefix(trim, prefix) {
+				continue
+			}
+			raw := strings.Trim(strings.TrimSpace(strings.TrimPrefix(trim, prefix)), `"'`)
+			port, err := strconv.Atoi(raw)
+			if err == nil {
+				ports = append(ports, struct {
+					port   int
+					source string
+				}{port: port, source: key})
+			}
+		}
+	}
+	return ports
+}
+
+func stripMihomoInlineComment(s string) string {
+	inSingle := false
+	inDouble := false
+	for i, r := range s {
+		switch r {
+		case '\'':
+			if !inDouble {
+				inSingle = !inSingle
+			}
+		case '"':
+			if !inSingle {
+				inDouble = !inDouble
+			}
+		case '#':
+			if !inSingle && !inDouble {
+				return strings.TrimSpace(s[:i])
+			}
+		}
+	}
+	return strings.TrimSpace(s)
+}
+
+func probeMihomoHTTPProxy(proxyURL string, probeURL string) bool {
+	ctx, cancel := context.WithTimeout(context.Background(), mihomoProxyProbeTimeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, probeURL, nil)
+	if err != nil {
+		return false
+	}
+	req.Header.Set("Range", "bytes=0-1023")
+	req.Header.Set("User-Agent", "WebSSH-u60pro-Mihomo-Proxy-Probe")
+	client := mihomoHTTPClientWithProxy(proxyURL)
+	resp, err := client.Do(req)
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusPartialContent {
+		return false
+	}
+	n, err := io.Copy(io.Discard, io.LimitReader(resp.Body, 1024))
+	return n > 0 && err == nil
 }
 
 func buildMihomoTryURLs(originalURL string, proxies []string) []string {
@@ -321,6 +488,28 @@ func probeProxySpeed(client *http.Client, proxy, originalURL string) (float64, e
 func mihomoFetchText(rawURL string) (string, error) {
 	client := mihomoHTTPClient()
 	var lastErr error
+	if proxyURL, ok := DetectMihomoHTTPProxy(rawURL); ok {
+		req, err := http.NewRequest(http.MethodGet, rawURL, nil)
+		if err == nil {
+			req.Header.Set("User-Agent", "WebSSH-u60pro-Mihomo-Updater")
+			resp, err := mihomoHTTPClientWithProxy(proxyURL).Do(req)
+			if err == nil && resp.StatusCode == http.StatusOK {
+				data, readErr := io.ReadAll(io.LimitReader(resp.Body, 1024))
+				resp.Body.Close()
+				if readErr == nil {
+					return strings.TrimSpace(string(data)), nil
+				}
+				lastErr = readErr
+			} else if err != nil {
+				lastErr = err
+			} else {
+				lastErr = fmt.Errorf("HTTP %d from mihomo proxy", resp.StatusCode)
+				resp.Body.Close()
+			}
+		} else {
+			lastErr = err
+		}
+	}
 	for _, u := range buildMihomoTryURLs(rawURL, mihomoProxies) {
 		req, err := http.NewRequest(http.MethodGet, u, nil)
 		if err != nil {
@@ -352,6 +541,15 @@ func mihomoFetchText(rawURL string) (string, error) {
 func mihomoDownloadFile(ctx context.Context, rawURL string, destPath string, onProgress func(downloaded, total int64)) error {
 	client := mihomoHTTPClient()
 	var lastErr error
+	if proxyURL, ok := DetectMihomoHTTPProxy(rawURL); ok {
+		if err := mihomoDownloadFileWithClient(ctx, mihomoHTTPClientWithProxy(proxyURL), rawURL, destPath, onProgress); err == nil {
+			return nil
+		} else if ctx.Err() != nil {
+			return ctx.Err()
+		} else {
+			lastErr = err
+		}
+	}
 	rankedProxies := RankProxiesBySpeed(mihomoProxies, rawURL)
 	for _, u := range buildMihomoTryURLs(rawURL, rankedProxies) {
 		if ctx.Err() != nil {
@@ -437,6 +635,79 @@ func mihomoDownloadFile(ctx context.Context, rawURL string, destPath string, onP
 		return nil
 	}
 	return fmt.Errorf("所有线路均失败: %w", lastErr)
+}
+
+func mihomoDownloadFileWithClient(ctx context.Context, client *http.Client, rawURL string, destPath string, onProgress func(downloaded, total int64)) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("User-Agent", "WebSSH-u60pro-Mihomo-Updater")
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	if resp.StatusCode != http.StatusOK {
+		resp.Body.Close()
+		return fmt.Errorf("HTTP %d from %s", resp.StatusCode, rawURL)
+	}
+	total := resp.ContentLength
+	tmpPath := destPath + ".tmp"
+	out, err := os.OpenFile(tmpPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+	if err != nil {
+		resp.Body.Close()
+		return err
+	}
+	buf := make([]byte, 64*1024)
+	var downloaded int64
+	var writeErr error
+	for {
+		if ctx.Err() != nil {
+			out.Close()
+			resp.Body.Close()
+			_ = os.Remove(tmpPath)
+			return ctx.Err()
+		}
+		n, readErr := resp.Body.Read(buf)
+		if n > 0 {
+			written, werr := out.Write(buf[:n])
+			downloaded += int64(written)
+			if onProgress != nil {
+				onProgress(downloaded, total)
+			}
+			if werr != nil {
+				writeErr = werr
+				break
+			}
+			if written != n {
+				writeErr = io.ErrShortWrite
+				break
+			}
+		}
+		if readErr == io.EOF {
+			break
+		}
+		if readErr != nil {
+			writeErr = readErr
+			break
+		}
+	}
+	resp.Body.Close()
+	out.Close()
+	if writeErr != nil {
+		_ = os.Remove(tmpPath)
+		return writeErr
+	}
+	info, err := os.Stat(tmpPath)
+	if err != nil || info.Size() == 0 {
+		_ = os.Remove(tmpPath)
+		return fmt.Errorf("下载文件为空")
+	}
+	if err := os.Rename(tmpPath, destPath); err != nil {
+		_ = os.Remove(tmpPath)
+		return err
+	}
+	return nil
 }
 
 // ─────────────────────────── 辅助函数 ───────────────────────────
@@ -845,14 +1116,15 @@ func MihomoCheckBinaryVersionHandler(c *gin.Context) {
 
 	remoteTag := extractMihomoVersionTag(remoteVersion)
 	localTag := extractMihomoVersionTag(localVersion)
+	installed := strings.TrimSpace(localVersion) != ""
 
-	// 只有当能从两边都提取出版本号且不相等时，才认为有更新；
-	// 任何一边为空都视为"未知"，不报 has_update（避免空 local 永远触发更新提示）。
-	hasUpdate := remoteTag != "" && localTag != "" && remoteTag != localTag
+	// 未安装时应提示可安装；已安装时只有两边都能提取版本且不同才提示更新。
+	hasUpdate := !installed || (remoteTag != "" && localTag != "" && remoteTag != localTag)
 
 	c.JSON(200, gin.H{
 		"code": 0, "msg": "ok",
 		"data": gin.H{
+			"installed":      installed,
 			"local_version":  localVersion,
 			"remote_version": remoteVersion,
 			"local_tag":      localTag,
