@@ -1107,8 +1107,10 @@ func buildDevuiHomeCards() {
 	modeU := strings.ToUpper(mode)
 	wanBandU := strings.ToUpper(wanBand)
 
-	// 判断是否存在有效 5G 载波（NSA/SA 均算）。
-	// network_type 含 ENDC/NSA，或 nr5g_pci/nr5g_rsrp 为有效值。
+	// 判断是否存在「有效」5G 载波。
+	// 关键：用户可能选了 NSA 模式但当前基站不支持，此时 network_type 仍含 ENDC/NSA，
+	// 但 nr5g_* 全为无效占位 —— 这种情况应按纯 LTE 处理，不能凭模式关键字判 5G。
+	// 因此 has5G 只认 nr5g_pci / nr5g_rsrp 的实际有效性。
 	// 注意 4294967295(0xFFFFFFFF)/65535 是无效占位；nr5g_cell_id 不可作判据。
 	nr5gPCI := devuiJSONGet(jsonText, "nr5g_pci")
 	nr5gRSRP := devuiJSONGet(jsonText, "nr5g_rsrp")
@@ -1116,19 +1118,14 @@ func buildDevuiHomeCards() {
 	pciOK := pciNum && pciVal >= 0 && pciVal != 4294967295 && pciVal != 65535
 	rsrpVal, rsrpNum := signalFloat(nr5gRSRP)
 	rsrpOK := rsrpNum && rsrpVal < 0
-	has5G := strings.Contains(modeU, "ENDC") ||
-		strings.Contains(modeU, "NSA") ||
-		pciOK || rsrpOK
+	has5G := pciOK && rsrpOK
 
-	// 纯 LTE：无 5G 且有 LTE 标识。
+	// 纯 LTE：无有效 5G 且有 LTE 标识。
 	isLTE := !has5G &&
 		(strings.Contains(modeU, "LTE") || strings.Contains(wanBandU, "LTE"))
 
-	// NSA：有 5G 且存在 LTE 锚点。主卡走 NR 分支，LTE 锚点入 CA 行。
-	isNSA := has5G &&
-		(strings.Contains(modeU, "ENDC") ||
-			strings.Contains(modeU, "NSA") ||
-			strings.Contains(wanBandU, "LTE"))
+	// NSA：有有效 5G 且存在 LTE 锚点。主卡走 NR 分支，LTE 锚点入 CA 行。
+	isNSA := has5G && strings.Contains(wanBandU, "LTE")
 
 	var band, pci, freq, bw string
 	var rsrp, rsrq, sinr, rssi string
@@ -1208,17 +1205,25 @@ func buildDevuiHomeCards() {
 
 	if isLTE {
 		count := 0
-		skipped := false
+		// 主载波作为第一行，带主卡的 RSRP/SINR。
+		mainPCI := strings.TrimSpace(pci)
+		mainFreq := strings.TrimSpace(freq)
+		if caColumnComplete(mainPCI, band, mainFreq, bw) {
+			writeLine(mainPCI)
+			writeLine(band)
+			writeLine(mainFreq)
+			writeLine(bwText)
+			writeLine(rsrp)
+			writeLine(sinr)
+			count++
+		}
+		// 追加其它聚合载波，跳过与主载波 PCI+频点相同的条目，避免重复。
 		for _, line := range strings.Split(lteca, ";") {
 			if count >= 2 {
 				break
 			}
 			fields := strings.Split(line, ",")
 			if len(fields) < 5 {
-				continue
-			}
-			if !skipped && fields[0] == pci && fields[3] == freq {
-				skipped = true
 				continue
 			}
 			colPCI := strings.TrimSpace(fields[0])
@@ -1230,6 +1235,9 @@ func buildDevuiHomeCards() {
 			}
 			// LTE 辅载波 RSRP/SINR 数据源不提供，固定占位 "-"，故不参与完整性校验。
 			if !caColumnComplete(colPCI, fields[1], colFreq, fields[4]) {
+				continue
+			}
+			if colPCI == mainPCI && colFreq == mainFreq {
 				continue
 			}
 			count++
