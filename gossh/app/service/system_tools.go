@@ -1204,8 +1204,8 @@ func buildDevuiHomeCards() {
 	writeLine(sinr)
 
 	if isLTE {
-		count := 0
-		// 主载波作为第一行，带主卡的 RSRP/SINR。
+		// 此固件 lteca 仅含主载波本身（5 字段、无独立 RSRP/SINR），
+		// 遍历它只会与主载波行重复，故 LTE 仅输出主载波一行。
 		mainPCI := strings.TrimSpace(pci)
 		mainFreq := strings.TrimSpace(freq)
 		if caColumnComplete(mainPCI, band, mainFreq, bw) {
@@ -1215,38 +1215,6 @@ func buildDevuiHomeCards() {
 			writeLine(bwText)
 			writeLine(rsrp)
 			writeLine(sinr)
-			count++
-		}
-		// 追加其它聚合载波，跳过与主载波 PCI+频点相同的条目，避免重复。
-		for _, line := range strings.Split(lteca, ";") {
-			if count >= 2 {
-				break
-			}
-			fields := strings.Split(line, ",")
-			if len(fields) < 5 {
-				continue
-			}
-			colPCI := strings.TrimSpace(fields[0])
-			colBand := "B" + strings.TrimSpace(fields[1])
-			colFreq := strings.TrimSpace(fields[3])
-			colBW := strings.TrimSpace(fields[4])
-			if colBW != "" {
-				colBW += "M"
-			}
-			// LTE 辅载波 RSRP/SINR 数据源不提供，固定占位 "-"，故不参与完整性校验。
-			if !caColumnComplete(colPCI, fields[1], colFreq, fields[4]) {
-				continue
-			}
-			if colPCI == mainPCI && colFreq == mainFreq {
-				continue
-			}
-			count++
-			writeLine(colPCI)
-			writeLine(colBand)
-			writeLine(colFreq)
-			writeLine(colBW)
-			writeLine("-")
-			writeLine("-")
 		}
 	} else {
 		count := 0
