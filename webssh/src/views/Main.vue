@@ -1237,7 +1237,7 @@
             </div>
             <div class="mh-info-item">
               <span class="mh-info-label">安装目录</span>
-              <span class="mh-info-value">/data/kano_plugins/mihomo</span>
+              <span class="mh-info-value">/data/plugins/mihomo</span>
             </div>
             <div class="mh-info-item">
               <el-tag v-if="mmBinaryVersionInfo.remote_version && !mmBinaryVersionInfo.installed" type="info" size="small">未安装</el-tag>
@@ -1645,7 +1645,7 @@
           <div class="system-tool-header">
             <div>
               <div class="settings-section-title">屏幕更新</div>
-              <div class="system-tool-hint">启动或开启自启前会自动下载 devui 补丁文件到 /data/kano_plugins/devui。</div>
+              <div class="system-tool-hint">启动或开启自启前会自动下载 DevUI 补丁文件到 /data/plugins/DevUI。</div>
             </div>
             <el-button size="small" :loading="devui.loading" @click="loadDevuiStatus">刷新</el-button>
           </div>
@@ -4311,7 +4311,7 @@ let mmGateClickCount = 0
 let mmGateClickTimer: ReturnType<typeof setTimeout> | null = null
 
 const mmStatus = reactive<MmStatusData>({
-  running: false, pid: 0, mihomo_dir: '/data/kano_plugins/mihomo', local_version: '',
+  running: false, pid: 0, mihomo_dir: '/data/plugins/mihomo', local_version: '',
   files: [], binary_version: '', start_time: '', api_reachable: false, api_version: '', external_controller: '',
   autostart_enabled: false
 })
