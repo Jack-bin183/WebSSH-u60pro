@@ -986,6 +986,7 @@ func initApplication() {
 	service.InitSshServer()
 	service.InitMihomoAutostart()
 	service.InitSmsForwardAutostart()
+	service.InitDevuiAutostart()
 	service.InitWifiSettingsAutostart()
 	fmt.Printf("WebBaseDir:[%s]\n", config.DefaultConfig.WebBaseDir)
 }
@@ -1053,6 +1054,12 @@ func main() {
 		auth.PUT("/api/system/sms-forward/config", service.SystemSmsForwardConfigHandler)
 		auth.POST("/api/system/sms-forward/control", service.SystemSmsForwardControlHandler)
 		auth.POST("/api/system/sms-forward/autostart", service.SystemSmsForwardAutostartHandler)
+		auth.GET("/api/system/devui/status", service.SystemDevuiStatusHandler)
+		auth.POST("/api/system/devui/download", service.SystemDevuiDownloadHandler)
+		auth.GET("/api/system/devui/download/status", service.SystemDevuiDownloadStatusHandler)
+		auth.POST("/api/system/devui/control", service.SystemDevuiControlHandler)
+		auth.POST("/api/system/devui/autostart", service.SystemDevuiAutostartHandler)
+		auth.POST("/api/system/devui/wallpaper", service.SystemDevuiWallpaperHandler)
 		auth.GET("/api/system/rc-local", service.SystemRcLocalGetHandler)
 		auth.PUT("/api/system/rc-local", service.SystemRcLocalSaveHandler)
 	}

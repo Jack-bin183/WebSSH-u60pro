@@ -1590,6 +1590,7 @@
               <div class="system-tool-section-title">Bark</div>
               <el-switch v-model="smsForward.barkEnabled" active-text="启用" inactive-text="关闭" />
               <el-input v-model="smsForward.barkUrl" placeholder="https://api.day.app/你的Key?icon=https://..." clearable />
+              <el-input v-model="smsForward.barkGroup" placeholder="分组 group，可选" clearable />
             </section>
             <section class="system-tool-section">
               <div class="system-tool-section-title">TG Bot</div>
@@ -1636,6 +1637,87 @@
             </div>
             <div v-if="!smsForward.loading && smsMessages.length === 0" class="system-tool-empty">暂无短信</div>
           </div>
+        </div>
+      </el-tab-pane>
+
+      <el-tab-pane label="屏幕更新" name="devui">
+        <div class="system-tool-panel">
+          <div class="system-tool-header">
+            <div>
+              <div class="settings-section-title">屏幕更新</div>
+              <div class="system-tool-hint">启动或开启自启前会自动下载 devui 补丁文件到 /data/kano_plugins/devui。</div>
+            </div>
+            <el-button size="small" :loading="devui.loading" @click="loadDevuiStatus">刷新</el-button>
+          </div>
+          <div class="sms-forward-switches">
+            <div class="local-speedtest-option">
+              <span>启动</span>
+              <el-switch
+                :model-value="devui.running"
+                :loading="devui.controlChanging"
+                active-text="开"
+                inactive-text="关"
+                @change="(val: string | number | boolean) => setDevuiRunning(Boolean(val))" />
+            </div>
+            <div class="local-speedtest-option">
+              <span>开机自启</span>
+              <el-switch
+                :model-value="devui.autostartEnabled"
+                :loading="devui.autostartChanging"
+                active-text="开"
+                inactive-text="关"
+                @change="(val: string | number | boolean) => setDevuiAutostart(Boolean(val))" />
+            </div>
+          </div>
+          <div class="devui-status-grid">
+            <div class="devui-patch-status">
+              <span>补丁文件</span>
+              <strong>{{ devui.binaryExists ? '已下载' : '未下载' }}</strong>
+              <el-button size="small" :loading="devui.downloading" @click="downloadDevuiBinary">
+                {{ devui.binaryExists ? '重新下载' : '下载' }}
+              </el-button>
+              <div v-if="devui.downloadState === 'downloading' || devui.downloadState === 'done' || devui.downloadState === 'failed'" class="devui-download-progress">
+                <el-progress
+                  :percentage="devui.downloadPercent"
+                  :status="devui.downloadState === 'failed' ? 'exception' : (devui.downloadState === 'done' ? 'success' : undefined)"
+                  :stroke-width="8" />
+                <div>{{ devui.downloadMsg || '正在下载...' }} · {{ formatSpeedTestBytes(devui.downloaded) }} / {{ devui.downloadTotal > 0 ? formatSpeedTestBytes(devui.downloadTotal) : '未知大小' }}</div>
+              </div>
+            </div>
+            <div><span>挂载状态</span><strong>{{ devui.mounted ? '已挂载' : '未挂载' }}</strong></div>
+            <div class="devui-data-status">
+              <span>数据接口</span>
+              <strong>{{ devui.dataReady ? '就绪' : '异常' }}</strong>
+              <em v-if="!devui.dataReady && devui.dataError">{{ devui.dataError }}</em>
+            </div>
+          </div>
+          <section class="system-tool-section">
+            <div class="system-tool-section-title">锁屏壁纸替换</div>
+            <div class="sms-forward-hint">最好上传 320x456 的 jpg/png，其他尺寸会自动缩放。</div>
+            <div class="devui-wallpaper-row">
+              <div class="devui-wallpaper-preview">
+                <img v-if="devui.wallpaperPreview" :src="devui.wallpaperPreview" alt="壁纸预览" />
+                <span v-else>预览</span>
+              </div>
+              <div class="devui-wallpaper-actions">
+                <input
+                  ref="devuiWallpaperInput"
+                  class="devui-file-input"
+                  type="file"
+                  accept="image/png,image/jpeg"
+                  @change="selectDevuiWallpaper" />
+                <el-button size="small" @click="pickDevuiWallpaper">选择图片</el-button>
+                <el-button
+                  size="small"
+                  type="primary"
+                  :disabled="!devui.wallpaperFile"
+                  :loading="devui.wallpaperUploading"
+                  @click="uploadDevuiWallpaper">替换壁纸</el-button>
+                <div v-if="devui.wallpaperName" class="devui-wallpaper-name">{{ devui.wallpaperName }}</div>
+              </div>
+            </div>
+          </section>
+          <div v-if="devui.status" class="local-speedtest-message">{{ devui.status }}</div>
         </div>
       </el-tab-pane>
 
@@ -2183,7 +2265,7 @@ const wifiSettingsSummary = computed(() => {
   return wifiSettingsSaving.value ? '应用中...' : `${wifiInfo.value.wifiStatus24 ? '2.4G开' : '2.4G关'} / ${wifiInfo.value.wifiStatus5 ? '5G开' : '5G关'}`;
 });
 
-type SystemToolsTab = 'speedtest' | 'sms' | 'rcLocal';
+type SystemToolsTab = 'speedtest' | 'sms' | 'devui' | 'rcLocal';
 
 interface SmsMessage {
   id: number;
@@ -2232,6 +2314,7 @@ const localSpeedTestSummary = computed(() => {
 const smsForward = reactive({
   barkEnabled: false,
   barkUrl: '',
+  barkGroup: '',
   tgEnabled: false,
   tgBotToken: '',
   tgChatId: '',
@@ -2249,6 +2332,32 @@ const smsForward = reactive({
   status: '',
 });
 const smsMessages = ref<SmsMessage[]>([]);
+
+const devui = reactive({
+  loading: false,
+  running: false,
+  autostartEnabled: false,
+  binaryExists: false,
+  mounted: false,
+  dataReady: false,
+  dataError: '',
+  downloading: false,
+  downloadState: 'idle',
+  downloadMsg: '',
+  downloaded: 0,
+  downloadTotal: 0,
+  downloadPercent: 0,
+  controlChanging: false,
+  autostartChanging: false,
+  wallpaperUploading: false,
+  wallpaperFile: null as File | null,
+  wallpaperPreview: '',
+  wallpaperName: '',
+  status: '',
+});
+const devuiWallpaperInput = ref<HTMLInputElement | null>(null);
+let devuiDownloadPollTimer: ReturnType<typeof setInterval> | null = null;
+let devuiDownloadClearTimer: ReturnType<typeof setTimeout> | null = null;
 
 const rcLocal = reactive({
   loading: false,
@@ -2332,6 +2441,12 @@ function openSystemToolsDialog(tab: SystemToolsTab = 'speedtest') {
   if (tab === 'sms' && smsMessages.value.length === 0) {
     loadSmsMessages();
   }
+  if (tab === 'devui') {
+    loadDevuiStatus();
+    loadDevuiDownloadStatus().then(() => {
+      if (devui.downloadState === 'downloading') startDevuiDownloadPoll();
+    });
+  }
   if (tab === 'rcLocal' && !rcLocal.loaded) {
     loadRcLocal();
   }
@@ -2380,6 +2495,7 @@ async function loadSmsForwardStatus() {
     const config = data.config || {};
     smsForward.barkEnabled = !!config.bark_enabled;
     smsForward.barkUrl = config.bark_url || '';
+    smsForward.barkGroup = config.bark_group || '';
     smsForward.tgEnabled = !!config.tg_enabled;
     smsForward.tgBotToken = config.tg_bot_token || '';
     smsForward.tgChatId = config.tg_chat_id || '';
@@ -2404,6 +2520,7 @@ async function saveSmsForwardConfig(showMessage = true) {
     const res = await axios.put('/api/system/sms-forward/config', {
       bark_enabled: smsForward.barkEnabled,
       bark_url: smsForward.barkUrl,
+      bark_group: smsForward.barkGroup,
       tg_enabled: smsForward.tgEnabled,
       tg_bot_token: smsForward.tgBotToken,
       tg_chat_id: smsForward.tgChatId,
@@ -2434,6 +2551,7 @@ async function forwardSms(onlyLatest: boolean) {
     const res = await axios.post('/api/system/sms/forward', {
       bark_enabled: smsForward.barkEnabled,
       bark_url: smsForward.barkUrl,
+      bark_group: smsForward.barkGroup,
       tg_enabled: smsForward.tgEnabled,
       tg_bot_token: smsForward.tgBotToken,
       tg_chat_id: smsForward.tgChatId,
@@ -2463,6 +2581,209 @@ async function forwardSms(onlyLatest: boolean) {
 
 function forwardLatestSms() {
   return forwardSms(true);
+}
+
+function applyDevuiStatus(data: any) {
+  devui.running = !!data.running;
+  devui.autostartEnabled = !!data.autostart_enabled;
+  devui.binaryExists = !!data.binary_exists;
+  devui.mounted = !!data.mounted;
+  devui.dataReady = !!data.data_ready;
+  devui.dataError = data.data_error || '';
+  devui.status = data.last_error
+    ? `屏幕更新异常：${data.last_error}`
+    : (devui.running ? '屏幕更新已启动' : '屏幕更新未启动');
+}
+
+async function loadDevuiStatus() {
+  devui.loading = true;
+  try {
+    const res = await axios.get('/api/system/devui/status');
+    if (res.data.code !== 0) {
+      devui.status = res.data.msg || '读取屏幕更新状态失败';
+      ElMessage.error(devui.status);
+      return;
+    }
+    applyDevuiStatus(res.data.data || {});
+  } catch (e: any) {
+    devui.status = '读取屏幕更新状态失败: ' + (e?.message ?? e);
+    ElMessage.error(devui.status);
+  } finally {
+    devui.loading = false;
+  }
+}
+
+function applyDevuiDownloadStatus(data: any) {
+  devui.downloadState = data.state || 'idle';
+  devui.downloadMsg = data.msg || '';
+  devui.downloaded = Number(data.downloaded || 0);
+  devui.downloadTotal = Number(data.total || 0);
+  devui.downloadPercent = Number(data.percent || 0);
+  devui.downloading = devui.downloadState === 'downloading';
+}
+
+function clearDevuiDownloadProgress(delayMs = 0) {
+  if (devuiDownloadClearTimer) {
+    clearTimeout(devuiDownloadClearTimer);
+    devuiDownloadClearTimer = null;
+  }
+  const clear = () => applyDevuiDownloadStatus({ state: 'idle', msg: '', downloaded: 0, total: 0, percent: 0 });
+  if (delayMs > 0) {
+    devuiDownloadClearTimer = setTimeout(() => {
+      clear();
+      devuiDownloadClearTimer = null;
+    }, delayMs);
+  } else {
+    clear();
+  }
+}
+
+async function loadDevuiDownloadStatus() {
+  try {
+    const res = await axios.get('/api/system/devui/download/status');
+    if (res.data.code === 0) {
+      applyDevuiDownloadStatus(res.data.data || {});
+      if (devui.downloadState === 'done') clearDevuiDownloadProgress(2000);
+    }
+  } catch {
+    // ignore transient polling errors
+  }
+}
+
+async function downloadDevuiBinary() {
+  clearDevuiDownloadProgress();
+  devui.downloading = true;
+  try {
+    const res = await axios.post('/api/system/devui/download');
+    applyDevuiDownloadStatus(res.data.data || {});
+    if (res.data.code !== 0) {
+      ElMessage.error(res.data.msg || '下载 devui 补丁文件失败');
+      return;
+    }
+    startDevuiDownloadPoll();
+  } catch (e: any) {
+    devui.status = '下载 devui 补丁文件失败: ' + (e?.message ?? e);
+    ElMessage.error(devui.status);
+    devui.downloading = false;
+  }
+}
+
+function startDevuiDownloadPoll() {
+  if (devuiDownloadPollTimer) return;
+  devuiDownloadPollTimer = setInterval(async () => {
+    await loadDevuiDownloadStatus();
+    if (devui.downloadState === 'done') {
+      stopDevuiDownloadPoll();
+      devui.status = devui.downloadMsg || 'devui 补丁文件已下载';
+      ElMessage.success(devui.status);
+      await loadDevuiStatus();
+      clearDevuiDownloadProgress(2000);
+    } else if (devui.downloadState === 'failed') {
+      stopDevuiDownloadPoll();
+      devui.status = devui.downloadMsg || '下载 devui 补丁文件失败';
+      ElMessage.error(devui.status);
+      await loadDevuiStatus();
+    }
+  }, 1000);
+}
+
+function stopDevuiDownloadPoll() {
+  if (devuiDownloadPollTimer) {
+    clearInterval(devuiDownloadPollTimer);
+    devuiDownloadPollTimer = null;
+  }
+}
+
+async function setDevuiRunning(enabled: boolean) {
+  devui.controlChanging = true;
+  devui.running = enabled;
+  devui.status = enabled ? '正在启动屏幕更新...' : '正在停止屏幕更新...';
+  try {
+    const res = await axios.post('/api/system/devui/control', { enabled });
+    applyDevuiStatus(res.data.data || {});
+    if (res.data.code !== 0) {
+      ElMessage.error(res.data.msg || '设置屏幕更新失败');
+      return;
+    }
+    ElMessage.success(enabled ? '屏幕更新已启动' : '屏幕更新已停止');
+  } catch (e: any) {
+    devui.running = !enabled;
+    devui.status = '设置屏幕更新失败: ' + (e?.message ?? e);
+    ElMessage.error(devui.status);
+  } finally {
+    devui.controlChanging = false;
+    await loadDevuiStatus();
+  }
+}
+
+async function setDevuiAutostart(enabled: boolean) {
+  devui.autostartChanging = true;
+  devui.autostartEnabled = enabled;
+  devui.status = enabled ? '正在开启屏幕更新自启...' : '正在关闭屏幕更新自启...';
+  try {
+    const res = await axios.post('/api/system/devui/autostart', { enabled });
+    applyDevuiStatus(res.data.data || {});
+    if (res.data.code !== 0) {
+      ElMessage.error(res.data.msg || '设置屏幕更新自启失败');
+      return;
+    }
+    ElMessage.success(enabled ? '屏幕更新已设置开机自启' : '屏幕更新已关闭开机自启');
+  } catch (e: any) {
+    devui.autostartEnabled = !enabled;
+    devui.status = '设置屏幕更新自启失败: ' + (e?.message ?? e);
+    ElMessage.error(devui.status);
+  } finally {
+    devui.autostartChanging = false;
+    await loadDevuiStatus();
+  }
+}
+
+function pickDevuiWallpaper() {
+  devuiWallpaperInput.value?.click();
+}
+
+function selectDevuiWallpaper(event: Event) {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0] || null;
+  if (devui.wallpaperPreview) {
+    URL.revokeObjectURL(devui.wallpaperPreview);
+  }
+  devui.wallpaperFile = file;
+  devui.wallpaperName = file?.name || '';
+  devui.wallpaperPreview = file ? URL.createObjectURL(file) : '';
+}
+
+async function uploadDevuiWallpaper() {
+  if (!devui.wallpaperFile) {
+    ElMessage.warning('请先选择壁纸图片');
+    return;
+  }
+  if (devui.running || devui.mounted) {
+    ElMessage.warning('请先停止屏幕更新后再替换壁纸');
+    return;
+  }
+  devui.wallpaperUploading = true;
+  devui.status = '正在替换锁屏壁纸...';
+  try {
+    const form = new FormData();
+    form.append('file', devui.wallpaperFile);
+    const res = await axios.post('/api/system/devui/wallpaper', form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    applyDevuiStatus(res.data.data || {});
+    if (res.data.code !== 0) {
+      ElMessage.error(res.data.msg || '替换壁纸失败');
+      return;
+    }
+    devui.status = res.data.msg || '壁纸已替换';
+    ElMessage.success(devui.status);
+  } catch (e: any) {
+    devui.status = '替换壁纸失败: ' + (e?.message ?? e);
+    ElMessage.error(devui.status);
+  } finally {
+    devui.wallpaperUploading = false;
+    await loadDevuiStatus();
+  }
 }
 
 async function setSmsForwardRunning(enabled: boolean) {
@@ -4736,12 +5057,19 @@ watch(systemToolsActiveTab, (tab) => {
     loadSmsForwardStatus();
     if (smsMessages.value.length === 0) loadSmsMessages();
   }
+  if (tab === 'devui') {
+    loadDevuiStatus();
+    loadDevuiDownloadStatus().then(() => {
+      if (devui.downloadState === 'downloading') startDevuiDownloadPoll();
+    });
+  }
   if (tab === 'rcLocal' && !rcLocal.loaded) loadRcLocal();
 });
 
 onMounted(() => {
   initMmEntryState();
   loadSmsForwardStatus();
+  loadDevuiStatus();
   fetchAllData();
   loadDeviceSettings();
   if (autoRefresh.value) {
@@ -4755,6 +5083,14 @@ onMounted(() => {
 
 onUnmounted(() => {
   stopAutoRefresh();
+  stopDevuiDownloadPoll();
+  if (devuiDownloadClearTimer) {
+    clearTimeout(devuiDownloadClearTimer);
+    devuiDownloadClearTimer = null;
+  }
+  if (devui.wallpaperPreview) {
+    URL.revokeObjectURL(devui.wallpaperPreview);
+  }
   stopMmAllPolls();
   stopLocalSpeedTest();
   stopDeviceRfRefresh();
@@ -6798,6 +7134,97 @@ onUnmounted(() => {
   color: rgba(255, 255, 255, 0.58);
   font-size: 12px;
 }
+.devui-status-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+.devui-status-grid > div {
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+}
+.devui-status-grid span {
+  display: block;
+  color: rgba(255, 255, 255, 0.56);
+  font-size: 12px;
+  line-height: 1.4;
+}
+.devui-status-grid strong {
+  display: block;
+  margin-top: 4px;
+  color: rgba(255, 255, 255, 0.88);
+  font-size: 13px;
+  line-height: 1.4;
+}
+.devui-patch-status .el-button {
+  margin-top: 8px;
+  margin-left: 0;
+}
+.devui-download-progress {
+  margin-top: 8px;
+}
+.devui-download-progress div {
+  margin-top: 4px;
+  color: rgba(255, 255, 255, 0.58);
+  font-size: 11px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+.devui-status-grid em {
+  display: block;
+  margin-top: 4px;
+  color: rgba(248, 113, 113, 0.9);
+  font-size: 11px;
+  font-style: normal;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+.devui-wallpaper-row {
+  display: grid;
+  grid-template-columns: 120px minmax(0, 1fr);
+  gap: 14px;
+  align-items: center;
+}
+.devui-wallpaper-preview {
+  width: 120px;
+  aspect-ratio: 320 / 456;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.22);
+  color: rgba(255, 255, 255, 0.46);
+  font-size: 12px;
+}
+.devui-wallpaper-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.devui-wallpaper-actions {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.devui-file-input {
+  display: none;
+}
+.devui-wallpaper-name {
+  min-width: 0;
+  max-width: 100%;
+  color: rgba(255, 255, 255, 0.62);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .sms-message-list {
   display: flex;
   flex-direction: column;
@@ -6846,6 +7273,16 @@ onUnmounted(() => {
   }
   .sms-forward-switches {
     grid-template-columns: 1fr;
+  }
+  .devui-status-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .devui-wallpaper-row {
+    grid-template-columns: 1fr;
+    justify-items: start;
+  }
+  .devui-wallpaper-actions {
+    width: 100%;
   }
   .local-speedtest-header {
     flex-direction: column;
