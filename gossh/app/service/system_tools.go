@@ -824,6 +824,8 @@ func stopDevuiScreenUpdate(startOriginal bool) error {
 	}
 	devuiStatus.Running = false
 	devuiMu.Unlock()
+	_ = os.Remove(devuiSpeedPath)
+	_ = os.Remove(devuiHomeCardsPath)
 
 	if isDevuiMounted() {
 		if err := stopDevuiService(); err != nil {
@@ -1098,59 +1100,49 @@ func buildDevuiHomeCards() {
 		return
 	}
 
-	provider := devuiJSONGet(jsonText, "network_provider")
-	mode := devuiJSONGet(jsonText, "network_type")
-	wanBand := devuiJSONGet(jsonText, "wan_active_band")
-	nrca := devuiJSONGet(jsonText, "nrca")
-	lteca := devuiJSONGet(jsonText, "lteca")
+	get := func(key string) string { return devuiJSONGet(jsonText, key) }
+
+	provider := get("network_provider")
+	mode := get("network_type")
+	wanBand := get("wan_active_band")
+	nrca := get("nrca")
+	lteca := get("lteca")
 
 	modeU := strings.ToUpper(mode)
-	wanBandU := strings.ToUpper(wanBand)
-
-	// 判断是否存在「有效」5G 载波。
-	// 关键：用户可能选了 NSA 模式但当前基站不支持，此时 network_type 仍含 ENDC/NSA，
-	// 但 nr5g_* 全为无效占位 —— 这种情况应按纯 LTE 处理，不能凭模式关键字判 5G。
-	// 因此 has5G 只认 nr5g_pci / nr5g_rsrp 的实际有效性。
-	// 注意 4294967295(0xFFFFFFFF)/65535 是无效占位；nr5g_cell_id 不可作判据。
-	nr5gPCI := devuiJSONGet(jsonText, "nr5g_pci")
-	nr5gRSRP := devuiJSONGet(jsonText, "nr5g_rsrp")
-	pciVal, pciNum := signalFloat(nr5gPCI)
-	pciOK := pciNum && pciVal >= 0 && pciVal != 4294967295 && pciVal != 65535
-	rsrpVal, rsrpNum := signalFloat(nr5gRSRP)
-	rsrpOK := rsrpNum && rsrpVal < 0
-	has5G := pciOK && rsrpOK
-
-	// 纯 LTE：无有效 5G 且有 LTE 标识。
-	isLTE := !has5G &&
-		(strings.Contains(modeU, "LTE") || strings.Contains(wanBandU, "LTE"))
-
-	// NSA：有有效 5G 且存在 LTE 锚点。主卡走 NR 分支，LTE 锚点入 CA 行。
-	isNSA := has5G && strings.Contains(wanBandU, "LTE")
+	netMode := "nr"
+	switch {
+	case strings.Contains(modeU, "LTE"):
+		netMode = "lte"
+	case strings.Contains(modeU, "ENDC"):
+		netMode = "nsa"
+	case strings.Contains(modeU, "SA"):
+		netMode = "sa"
+	}
 
 	var band, pci, freq, bw string
 	var rsrp, rsrq, sinr, rssi string
-	if isLTE {
+	if netMode == "lte" {
 		band = compactBand(wanBand)
-		pci = devuiJSONGet(jsonText, "lte_pci")
-		freq = devuiJSONGet(jsonText, "wan_active_channel")
+		pci = get("lte_pci")
+		freq = get("wan_active_channel")
 		bw = lteBWFromCA(lteca)
-		rsrp = devuiJSONGet(jsonText, "lte_rsrp")
-		rsrq = devuiJSONGet(jsonText, "lte_rsrq")
-		sinr = devuiJSONGet(jsonText, "lte_snr")
-		rssi = devuiJSONGet(jsonText, "lte_rssi")
+		rsrp = get("lte_rsrp")
+		rsrq = get("lte_rsrq")
+		sinr = get("lte_snr")
+		rssi = get("lte_rssi")
 	} else {
-		band = devuiJSONGet(jsonText, "nr5g_action_band")
+		band = get("nr5g_action_band")
 		if band == "" {
 			band = wanBand
 		}
 		band = compactBand(band)
-		pci = devuiJSONGet(jsonText, "nr5g_pci")
-		freq = devuiJSONGet(jsonText, "nr5g_action_channel")
-		bw = devuiJSONGet(jsonText, "nr5g_bandwidth")
-		rsrp = devuiJSONGet(jsonText, "nr5g_rsrp")
-		rsrq = devuiJSONGet(jsonText, "nr5g_rsrq")
-		sinr = devuiJSONGet(jsonText, "nr5g_snr")
-		rssi = devuiJSONGet(jsonText, "nr5g_rssi")
+		pci = get("nr5g_pci")
+		freq = get("nr5g_action_channel")
+		bw = get("nr5g_bandwidth")
+		rsrp = get("nr5g_rsrp")
+		rsrq = get("nr5g_rsrq")
+		sinr = get("nr5g_snr")
+		rssi = get("nr5g_rssi")
 	}
 
 	provider = fallbackDash(provider)
@@ -1188,7 +1180,7 @@ func buildDevuiHomeCards() {
 	writeLine(rssi + " dBm")
 	writeLine("PCI")
 	writeLine("频段")
-	if isLTE {
+	if netMode == "lte" {
 		writeLine("信道")
 	} else {
 		writeLine("频点")
@@ -1196,51 +1188,105 @@ func buildDevuiHomeCards() {
 	writeLine("带宽")
 	writeLine("RSRP")
 	writeLine("SINR")
-	writeLine(pci)
-	writeLine(band)
-	writeLine(freq)
-	writeLine(bwText)
-	writeLine(rsrp)
-	writeLine(sinr)
 
-	if isLTE {
-		// 此固件 lteca 仅含主载波本身（5 字段、无独立 RSRP/SINR），
-		// 遍历它只会与主载波行重复，故 LTE 仅输出主载波一行。
-		mainPCI := strings.TrimSpace(pci)
-		mainFreq := strings.TrimSpace(freq)
-		if caColumnComplete(mainPCI, band, mainFreq, bw) {
-			writeLine(mainPCI)
-			writeLine(band)
-			writeLine(mainFreq)
-			writeLine(bwText)
-			writeLine(rsrp)
-			writeLine(sinr)
+	switch netMode {
+	case "nsa":
+		lteBand := compactBand(wanBand)
+		ltePci := get("lte_pci")
+		lteFreq := get("wan_active_channel")
+		lteBw := lteBWFromCA(lteca)
+		lteRsrp := fmtNum(get("lte_rsrp"))
+		lteSinr := fmtNum(get("lte_snr"))
+
+		lteBand = fallbackDash(lteBand)
+		ltePci = fallbackDash(ltePci)
+		lteFreq = fallbackDash(lteFreq)
+		lteBw = fallbackDash(lteBw)
+		lteRsrp = fallbackDash(lteRsrp)
+		lteSinr = fallbackDash(lteSinr)
+
+		lteBwText := "--"
+		if lteBw != "--" {
+			lteBwText = lteBw + "M"
 		}
-	} else {
+
+		nrBand := get("nr5g_action_band")
+		if nrBand == "" {
+			nrBand = wanBand
+		}
+		nrBand = compactBand(nrBand)
+		nrPci := get("nr5g_pci")
+		nrFreq := get("nr5g_action_channel")
+		nrBw := get("nr5g_bandwidth")
+		nrRsrp := fmtNum(get("nr5g_rsrp"))
+		nrSinr := fmtNum(get("nr5g_snr"))
+
+		nrBand = fallbackDash(nrBand)
+		nrPci = fallbackDash(nrPci)
+		nrFreq = fallbackDash(nrFreq)
+		nrBw = fallbackDash(nrBw)
+		nrRsrp = fallbackDash(nrRsrp)
+		nrSinr = fallbackDash(nrSinr)
+
+		nrBwText := "--"
+		if nrBw != "--" {
+			nrBwText = nrBw + "M"
+		}
+
+		writeLine(ltePci)
+		writeLine(lteBand)
+		writeLine(lteFreq)
+		writeLine(lteBwText)
+		writeLine(lteRsrp)
+		writeLine(lteSinr)
+
+		writeLine(nrPci)
+		writeLine(nrBand)
+		writeLine(nrFreq)
+		writeLine(nrBwText)
+		writeLine(nrRsrp)
+		writeLine(nrSinr)
+
+	case "lte":
+		writeLine(pci)
+		writeLine(band)
+		writeLine(freq)
+		writeLine(bwText)
+		writeLine(rsrp)
+		writeLine(sinr)
+
 		count := 0
-		// NSA：把 LTE 锚点作为第一条 CA 行（NR 为主卡，LTE 作辅助）。
-		if isNSA {
-			lpci := strings.TrimSpace(devuiJSONGet(jsonText, "lte_pci"))
-			lbandRaw := strings.TrimSpace(wanBand)
-			lband := compactBand(wanBand)
-			lfreq := strings.TrimSpace(devuiJSONGet(jsonText, "wan_active_channel"))
-			lbwRaw := lteBWFromCA(lteca)
-			lbwText := lbwRaw
-			if lbwText != "" {
-				lbwText += "M"
+		skipped := false
+		for _, line := range strings.Split(lteca, ";") {
+			if count >= 2 {
+				break
 			}
-			lrsrp := fmtNum(strings.TrimSpace(devuiJSONGet(jsonText, "lte_rsrp")))
-			lsinr := fmtNum(strings.TrimSpace(devuiJSONGet(jsonText, "lte_snr")))
-			if caColumnComplete(lpci, lbandRaw, lfreq, lbwRaw, lrsrp, lsinr) {
-				writeLine(lpci)
-				writeLine(lband)
-				writeLine(lfreq)
-				writeLine(lbwText)
-				writeLine(lrsrp)
-				writeLine(lsinr)
-				count++
+			fields := strings.Split(line, ",")
+			if len(fields) < 5 {
+				continue
 			}
+			if !skipped && fields[0] == pci && fields[3] == freq {
+				skipped = true
+				continue
+			}
+			count++
+			writeLine(fields[0])
+			writeLine("B" + fields[1])
+			writeLine(fields[3])
+			writeLine(fields[4] + "M")
+			writeLine("-")
+			writeLine("-")
 		}
+
+	default:
+		writeLine(pci)
+		writeLine(band)
+		writeLine(freq)
+		writeLine(bwText)
+		writeLine(rsrp)
+		writeLine(sinr)
+
+		count := 0
 		for _, line := range strings.Split(nrca, ";") {
 			if count >= 2 {
 				break
@@ -1249,25 +1295,13 @@ func buildDevuiHomeCards() {
 			if len(fields) < 11 {
 				continue
 			}
-			colPCI := strings.TrimSpace(fields[1])
-			colBand := "N" + strings.TrimSpace(fields[3])
-			colFreq := strings.TrimSpace(fields[4])
-			colBW := strings.TrimSpace(fields[5])
-			if colBW != "" {
-				colBW += "M"
-			}
-			colRSRP := devuiStripDotZero(strings.TrimSpace(fields[7]))
-			colSINR := devuiStripDotZero(strings.TrimSpace(fields[9]))
-			if !caColumnComplete(colPCI, fields[3], colFreq, fields[5], colRSRP, colSINR) {
-				continue
-			}
 			count++
-			writeLine(colPCI)
-			writeLine(colBand)
-			writeLine(colFreq)
-			writeLine(colBW)
-			writeLine(colRSRP)
-			writeLine(colSINR)
+			writeLine(fields[1])
+			writeLine("N" + fields[3])
+			writeLine(fields[4])
+			writeLine(fields[5] + "M")
+			writeLine(devuiStripDotZero(fields[7]))
+			writeLine(devuiStripDotZero(fields[9]))
 		}
 	}
 
@@ -1437,7 +1471,7 @@ func fileExists(path string) bool {
 }
 
 func fallbackDash(value string) string {
-	if strings.TrimSpace(value) == "" {
+	if value == "" {
 		return "--"
 	}
 	return value
@@ -1451,22 +1485,25 @@ var devuiDotZeroRe = regexp.MustCompile(`\.0+$`)
 
 func devuiJSONGet(jsonText string, key string) string {
 	pattern := `"` + key + `":`
-	pos := strings.Index(jsonText, pattern)
-	if pos < 0 {
-		return ""
-	}
-	value := strings.TrimLeft(jsonText[pos+len(pattern):], " \t\r\n")
-	if len(value) > 0 && value[0] == '"' {
-		value = value[1:]
-		if end := strings.IndexByte(value, '"'); end >= 0 {
-			return value[:end]
+	for _, line := range strings.Split(jsonText, "\n") {
+		pos := strings.Index(line, pattern)
+		if pos < 0 {
+			continue
+		}
+		value := strings.TrimLeft(line[pos+len(pattern):], " \t")
+		if len(value) > 0 && value[0] == '"' {
+			value = value[1:]
+			if end := strings.IndexByte(value, '"'); end >= 0 {
+				return value[:end]
+			}
+			return ""
+		}
+		if end := strings.IndexAny(value, ",}"); end >= 0 {
+			value = value[:end]
 		}
 		return value
 	}
-	if end := strings.IndexAny(value, ",}"); end >= 0 {
-		value = value[:end]
-	}
-	return strings.TrimSpace(value)
+	return ""
 }
 
 func devuiStripDotZero(value string) string {
@@ -1506,11 +1543,19 @@ func signalFloat(value string) (float64, bool) {
 	return f, err == nil
 }
 
+func devuiToFloat(value string) float64 {
+	f, err := strconv.ParseFloat(strings.TrimSpace(value), 64)
+	if err != nil {
+		return 0
+	}
+	return f
+}
+
 func gradeSignal(value string, kind string) string {
-	v, ok := signalFloat(value)
-	if !ok {
+	if value == "" || value == "--" {
 		return "--"
 	}
+	v := devuiToFloat(value)
 	switch kind {
 	case "rsrp":
 		if v >= -80 {
@@ -1557,10 +1602,10 @@ func gradeSignal(value string, kind string) string {
 }
 
 func signalBarWidth(value string, kind string) int {
-	v, ok := signalFloat(value)
-	if !ok {
+	if value == "" || value == "--" {
 		return 2
 	}
+	v := devuiToFloat(value)
 	lo, hi := -115.0, -65.0
 	switch kind {
 	case "rsrq":
@@ -1595,20 +1640,32 @@ func compactBand(value string) string {
 	value = strings.ReplaceAll(value, "_", " ")
 	u := strings.ToUpper(value)
 	fields := strings.Fields(u)
-	if len(fields) == 3 && fields[0] == "LTE" && fields[1] == "BAND" {
+	if len(fields) == 3 && fields[0] == "LTE" && fields[1] == "BAND" && devuiAllDigits(fields[2]) {
 		return "B" + fields[2]
 	}
-	if len(fields) == 2 && fields[0] == "BAND" {
+	if len(fields) == 2 && fields[0] == "BAND" && devuiAllDigits(fields[1]) {
 		return "B" + fields[1]
 	}
 	return u
 }
 
+func devuiAllDigits(value string) bool {
+	if value == "" {
+		return false
+	}
+	for _, r := range value {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
+}
+
 func lteBWFromCA(ca string) string {
 	for _, item := range strings.Split(ca, ";") {
 		fields := strings.Split(item, ",")
-		if len(fields) >= 5 && strings.TrimSpace(fields[4]) != "" {
-			return strings.TrimSpace(fields[4])
+		if len(fields) >= 5 && fields[4] != "" {
+			return fields[4]
 		}
 	}
 	return ""
