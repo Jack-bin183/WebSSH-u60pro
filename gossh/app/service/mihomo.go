@@ -24,7 +24,7 @@ import (
 // ─────────────────────────── 常量 ───────────────────────────
 
 const (
-	mihomoGithubRepo        = "primovist/WebSSH-u60pro"
+	mihomoGithubRepo        = "Primovist/WebSSH-u60pro"
 	mihomoDataTag           = "latest-data"
 	mihomoDataBaseURL       = "https://github.com/" + mihomoGithubRepo + "/releases/download/" + mihomoDataTag + "/"
 	mihomoVersionFileURL    = mihomoDataBaseURL + "data_version.txt"
