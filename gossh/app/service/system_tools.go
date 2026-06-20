@@ -724,6 +724,9 @@ func sendBark(rawURL string, title string, body string) error {
 	if icon := strings.TrimSpace(base.Query().Get("icon")); icon != "" {
 		payloadData["icon"] = icon
 	}
+	if group := strings.TrimSpace(base.Query().Get("group")); group != "" {
+		payloadData["group"] = group
+	}
 	payload, err := json.Marshal(payloadData)
 	if err != nil {
 		return err
