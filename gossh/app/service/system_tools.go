@@ -1106,7 +1106,29 @@ func buildDevuiHomeCards() {
 
 	modeU := strings.ToUpper(mode)
 	wanBandU := strings.ToUpper(wanBand)
-	isLTE := strings.Contains(modeU, "LTE") || strings.HasPrefix(wanBandU, "LTE")
+
+	// 判断是否存在有效 5G 载波（NSA/SA 均算）。
+	// network_type 含 ENDC/NSA，或 nr5g_pci/nr5g_rsrp 为有效值。
+	// 注意 4294967295(0xFFFFFFFF)/65535 是无效占位；nr5g_cell_id 不可作判据。
+	nr5gPCI := devuiJSONGet(jsonText, "nr5g_pci")
+	nr5gRSRP := devuiJSONGet(jsonText, "nr5g_rsrp")
+	pciVal, pciNum := signalFloat(nr5gPCI)
+	pciOK := pciNum && pciVal >= 0 && pciVal != 4294967295 && pciVal != 65535
+	rsrpVal, rsrpNum := signalFloat(nr5gRSRP)
+	rsrpOK := rsrpNum && rsrpVal < 0
+	has5G := strings.Contains(modeU, "ENDC") ||
+		strings.Contains(modeU, "NSA") ||
+		pciOK || rsrpOK
+
+	// 纯 LTE：无 5G 且有 LTE 标识。
+	isLTE := !has5G &&
+		(strings.Contains(modeU, "LTE") || strings.Contains(wanBandU, "LTE"))
+
+	// NSA：有 5G 且存在 LTE 锚点。主卡走 NR 分支，LTE 锚点入 CA 行。
+	isNSA := has5G &&
+		(strings.Contains(modeU, "ENDC") ||
+			strings.Contains(modeU, "NSA") ||
+			strings.Contains(wanBandU, "LTE"))
 
 	var band, pci, freq, bw string
 	var rsrp, rsrq, sinr, rssi string
@@ -1199,16 +1221,50 @@ func buildDevuiHomeCards() {
 				skipped = true
 				continue
 			}
+			colPCI := strings.TrimSpace(fields[0])
+			colBand := "B" + strings.TrimSpace(fields[1])
+			colFreq := strings.TrimSpace(fields[3])
+			colBW := strings.TrimSpace(fields[4])
+			if colBW != "" {
+				colBW += "M"
+			}
+			// LTE 辅载波 RSRP/SINR 数据源不提供，固定占位 "-"，故不参与完整性校验。
+			if !caColumnComplete(colPCI, fields[1], colFreq, fields[4]) {
+				continue
+			}
 			count++
-			writeLine(fields[0])
-			writeLine("B" + fields[1])
-			writeLine(fields[3])
-			writeLine(fields[4] + "M")
+			writeLine(colPCI)
+			writeLine(colBand)
+			writeLine(colFreq)
+			writeLine(colBW)
 			writeLine("-")
 			writeLine("-")
 		}
 	} else {
 		count := 0
+		// NSA：把 LTE 锚点作为第一条 CA 行（NR 为主卡，LTE 作辅助）。
+		if isNSA {
+			lpci := strings.TrimSpace(devuiJSONGet(jsonText, "lte_pci"))
+			lbandRaw := strings.TrimSpace(wanBand)
+			lband := compactBand(wanBand)
+			lfreq := strings.TrimSpace(devuiJSONGet(jsonText, "wan_active_channel"))
+			lbwRaw := lteBWFromCA(lteca)
+			lbwText := lbwRaw
+			if lbwText != "" {
+				lbwText += "M"
+			}
+			lrsrp := fmtNum(strings.TrimSpace(devuiJSONGet(jsonText, "lte_rsrp")))
+			lsinr := fmtNum(strings.TrimSpace(devuiJSONGet(jsonText, "lte_snr")))
+			if caColumnComplete(lpci, lbandRaw, lfreq, lbwRaw, lrsrp, lsinr) {
+				writeLine(lpci)
+				writeLine(lband)
+				writeLine(lfreq)
+				writeLine(lbwText)
+				writeLine(lrsrp)
+				writeLine(lsinr)
+				count++
+			}
+		}
 		for _, line := range strings.Split(nrca, ";") {
 			if count >= 2 {
 				break
@@ -1217,13 +1273,25 @@ func buildDevuiHomeCards() {
 			if len(fields) < 11 {
 				continue
 			}
+			colPCI := strings.TrimSpace(fields[1])
+			colBand := "N" + strings.TrimSpace(fields[3])
+			colFreq := strings.TrimSpace(fields[4])
+			colBW := strings.TrimSpace(fields[5])
+			if colBW != "" {
+				colBW += "M"
+			}
+			colRSRP := devuiStripDotZero(strings.TrimSpace(fields[7]))
+			colSINR := devuiStripDotZero(strings.TrimSpace(fields[9]))
+			if !caColumnComplete(colPCI, fields[3], colFreq, fields[5], colRSRP, colSINR) {
+				continue
+			}
 			count++
-			writeLine(fields[1])
-			writeLine("N" + fields[3])
-			writeLine(fields[4])
-			writeLine(fields[5] + "M")
-			writeLine(devuiStripDotZero(fields[7]))
-			writeLine(devuiStripDotZero(fields[9]))
+			writeLine(colPCI)
+			writeLine(colBand)
+			writeLine(colFreq)
+			writeLine(colBW)
+			writeLine(colRSRP)
+			writeLine(colSINR)
 		}
 	}
 
@@ -1427,6 +1495,18 @@ func devuiJSONGet(jsonText string, key string) string {
 
 func devuiStripDotZero(value string) string {
 	return devuiDotZeroRe.ReplaceAllString(value, "")
+}
+
+// caColumnComplete 判断一列 CA 的 6 个展示值（PCI/频段/频点或信道/带宽/RSRP/SINR）
+// 是否全部有效。任意一个为空、"-"、"--" 即视为残值列，整列丢弃。
+func caColumnComplete(values ...string) bool {
+	for _, v := range values {
+		v = strings.TrimSpace(v)
+		if v == "" || v == "-" || v == "--" {
+			return false
+		}
+	}
+	return true
 }
 
 func fmtNum(value string) string {
