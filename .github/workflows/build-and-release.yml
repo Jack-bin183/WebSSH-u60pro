@@ -8,6 +8,7 @@ on:
 permissions:
   contents: write
 
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -17,7 +18,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          token: ${{ secrets.PERSONAL_TOKEN }}
+          token: ${{ secrets.GITHUB_TOKEN }}
           fetch-depth: 0
           fetch-tags: true
 
@@ -129,7 +130,7 @@ jobs:
           git add version.txt changelog.txt
           git commit -m "update version & changelog to ${VERSION}"
 
-          git remote add origin https://x-access-token:${{ secrets.PERSONAL_TOKEN }}@github.com/${{ github.repository }}.git
+          git remote add origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
           git push -f origin version
 
       # 11. 创建 Release（直接上传原始文件，并把 changelog 作为 release body）
@@ -144,4 +145,4 @@ jobs:
           files: |
             gossh/webssh_${{ steps.version.outputs.version }}
         env:
-          GITHUB_TOKEN: ${{ secrets.PERSONAL_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
