@@ -14,7 +14,7 @@
 # - TUN 必须 auto-route: false，由本脚本手动给 UDP 打 mark
 # =========================
 
-MIHOMO_DIR="/data/kano_plugins/mihomo"
+MIHOMO_DIR="/data/plugins/mihomo"
 MIHOMO_BIN="$MIHOMO_DIR/mihomo"
 MIHOMO_CONFIG="$MIHOMO_DIR/config.yaml"
 

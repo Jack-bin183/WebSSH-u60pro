@@ -24,14 +24,14 @@ import (
 // ─────────────────────────── 常量 ───────────────────────────
 
 const (
-	mihomoGithubRepo        = "Jack-bin183/WebSSH-u60pro"
+	mihomoGithubRepo        = "primovist/WebSSH-u60pro"
 	mihomoDataTag           = "latest-data"
 	mihomoDataBaseURL       = "https://github.com/" + mihomoGithubRepo + "/releases/download/" + mihomoDataTag + "/"
 	mihomoVersionFileURL    = mihomoDataBaseURL + "data_version.txt"
 	mihomoInstallVersionURL = mihomoDataBaseURL + "mihomo_version.txt"
 	mihomoInstallBinaryURL  = mihomoDataBaseURL + "mihomo-linux-arm64"
 	mihomoInstallMmShURL    = mihomoDataBaseURL + "mm.sh"
-	mihomoDefaultDir        = "/data/kano_plugins/mihomo"
+	mihomoDefaultDir        = "/data/plugins/mihomo"
 	mihomoConnTimeout       = 3 * time.Second
 	mihomoProxyProbeTimeout = 4 * time.Second
 	mihomoProxyCacheTTL     = 60 * time.Second

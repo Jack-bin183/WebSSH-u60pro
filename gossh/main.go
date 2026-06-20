@@ -31,7 +31,7 @@ import (
 var version = "dev"
 
 const (
-	GithubRepo             = "Jack-bin183/WebSSH-u60pro"
+	GithubRepo             = "primovist/WebSSH-u60pro"
 	updateConnectTimeout   = 3 * time.Second
 	updateVersionFileURL   = "https://raw.githubusercontent.com/" + GithubRepo + "/version/version.txt"
 	updateChangelogFileURL = "https://raw.githubusercontent.com/" + GithubRepo + "/version/changelog.txt"

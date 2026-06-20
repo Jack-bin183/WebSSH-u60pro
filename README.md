@@ -108,10 +108,10 @@ upx --best --lzma webssh
 
 ```bash
 # Copy the binary to the router
-scp webssh root@<router-ip>:/data/kano_plugins/webssh/
+scp webssh root@<router-ip>:/data/plugins/WebSSH/
 
 # Run on the router (SQLite database is stored in the working directory)
-cd /data/kano_plugins/webssh && ./webssh
+cd /data/plugins/WebSSH && ./webssh
 ```
 
 Listens on `:8899` by default. A setup wizard runs on the first visit.
@@ -120,7 +120,7 @@ Listens on `:8899` by default. A setup wizard runs on the first visit.
 
 ## Mihomo Transparent Proxy
 
-All Mihomo-related files live under `/data/kano_plugins/mihomo/` on the router.
+All Mihomo-related files live under `/data/plugins/mihomo/` on the router.
 
 ### First-time setup
 

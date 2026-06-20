@@ -22,7 +22,7 @@ import (
 )
 
 const rcLocalPath = "/etc/rc.local"
-const smsForwardDefaultDir = "/data/kano_plugins/sms_forward"
+const smsForwardDefaultDir = "/data/plugins/SMS_Forward"
 const smsForwardConfigName = "config.json"
 const smsForwardAutostartMarker = ".autostart"
 const smsForwardPollInterval = 3 * time.Second
