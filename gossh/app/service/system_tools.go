@@ -1122,6 +1122,7 @@ func buildDevuiHomeCards() {
 	lteca := get("lteca")
 
 	modeU := strings.ToUpper(mode)
+	noService := strings.Contains(modeU, "NO_SERVICE")
 	netMode := "nr"
 	switch {
 	case strings.Contains(modeU, "LTE"):
@@ -1174,22 +1175,35 @@ func buildDevuiHomeCards() {
 		bwText = bw + "M"
 	}
 
+	signalGrade := func(value string, kind string) string {
+		if noService {
+			return "较差"
+		}
+		return gradeSignal(value, kind)
+	}
+	signalWidth := func(value string, kind string) int {
+		if noService {
+			return 0
+		}
+		return signalBarWidth(value, kind)
+	}
+
 	var b strings.Builder
 	writeLine := func(s string) {
 		b.WriteString(s)
 		b.WriteByte('\n')
 	}
 	writeLine("RSRP")
-	writeLine(gradeSignal(rsrp, "rsrp"))
+	writeLine(signalGrade(rsrp, "rsrp"))
 	writeLine(rsrp + " dBm")
 	writeLine("RSRQ")
-	writeLine(gradeSignal(rsrq, "rsrq"))
+	writeLine(signalGrade(rsrq, "rsrq"))
 	writeLine(rsrq + " dB")
 	writeLine("SINR")
-	writeLine(gradeSignal(sinr, "sinr"))
+	writeLine(signalGrade(sinr, "sinr"))
 	writeLine(sinr + " dB")
 	writeLine("RSSI")
-	writeLine(gradeSignal(rssi, "rssi"))
+	writeLine(signalGrade(rssi, "rssi"))
 	writeLine(rssi + " dBm")
 	writeLine("PCI")
 	writeLine("频段")
@@ -1324,10 +1338,10 @@ func buildDevuiHomeCards() {
 		lines++
 	}
 
-	writeLine(strconv.Itoa(signalBarWidth(rsrp, "rsrp")))
-	writeLine(strconv.Itoa(signalBarWidth(rsrq, "rsrq")))
-	writeLine(strconv.Itoa(signalBarWidth(sinr, "sinr")))
-	writeLine(strconv.Itoa(signalBarWidth(rssi, "rssi")))
+	writeLine(strconv.Itoa(signalWidth(rsrp, "rsrp")))
+	writeLine(strconv.Itoa(signalWidth(rsrq, "rsrq")))
+	writeLine(strconv.Itoa(signalWidth(sinr, "sinr")))
+	writeLine(strconv.Itoa(signalWidth(rssi, "rssi")))
 
 	_ = provider
 	_ = mode
@@ -1600,6 +1614,9 @@ func gradeSignal(value string, kind string) string {
 	if value == "" || value == "--" {
 		return "--"
 	}
+	if invalidZeroSignal(value, kind) {
+		return "较差"
+	}
 	v := devuiToFloat(value)
 	switch kind {
 	case "rsrp":
@@ -1648,7 +1665,10 @@ func gradeSignal(value string, kind string) string {
 
 func signalBarWidth(value string, kind string) int {
 	if value == "" || value == "--" {
-		return 2
+		return 0
+	}
+	if invalidZeroSignal(value, kind) {
+		return 0
 	}
 	v := devuiToFloat(value)
 	lo, hi := -115.0, -65.0
@@ -1675,6 +1695,19 @@ func signalBarWidth(value string, kind string) int {
 		return 132
 	}
 	return w
+}
+
+func invalidZeroSignal(value string, kind string) bool {
+	v, ok := signalFloat(value)
+	if !ok || v != 0 {
+		return false
+	}
+	switch kind {
+	case "rsrp", "rsrq", "rssi":
+		return true
+	default:
+		return false
+	}
 }
 
 func compactBand(value string) string {
