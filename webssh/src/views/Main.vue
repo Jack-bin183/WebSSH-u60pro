@@ -1696,8 +1696,14 @@
             <div class="sms-forward-hint">最好上传 320x456 的 jpg/png，其他尺寸会自动缩放。</div>
             <div class="devui-wallpaper-row">
               <div class="devui-wallpaper-preview">
-                <img v-if="devui.wallpaperPreview" :src="devui.wallpaperPreview" alt="壁纸预览" />
-                <span v-else>预览</span>
+                <div class="devui-preview-label">真实壁纸</div>
+                <img v-if="devui.binaryWallpaperPreview" :src="devui.binaryWallpaperPreview" alt="真实壁纸预览" />
+                <span v-else>{{ devui.binaryExists ? '预览不可用' : '未下载补丁' }}</span>
+              </div>
+              <div class="devui-wallpaper-preview">
+                <div class="devui-preview-label">上传预览</div>
+                <img v-if="devui.uploadWallpaperPreview" :src="devui.uploadWallpaperPreview" alt="上传图片预览" />
+                <span v-else>未选择图片</span>
               </div>
               <div class="devui-wallpaper-actions">
                 <input
@@ -2351,7 +2357,8 @@ const devui = reactive({
   autostartChanging: false,
   wallpaperUploading: false,
   wallpaperFile: null as File | null,
-  wallpaperPreview: '',
+  binaryWallpaperPreview: '',
+  uploadWallpaperPreview: '',
   wallpaperName: '',
   status: '',
 });
@@ -2584,6 +2591,7 @@ function forwardLatestSms() {
 }
 
 function applyDevuiStatus(data: any) {
+  const hadBinary = devui.binaryExists;
   devui.running = !!data.running;
   devui.autostartEnabled = !!data.autostart_enabled;
   devui.binaryExists = !!data.binary_exists;
@@ -2593,6 +2601,29 @@ function applyDevuiStatus(data: any) {
   devui.status = data.last_error
     ? `屏幕更新异常：${data.last_error}`
     : (devui.running ? '屏幕更新已启动' : '屏幕更新未启动');
+  if (devui.binaryExists && (!hadBinary || !devui.binaryWallpaperPreview)) {
+    refreshDevuiWallpaperPreview();
+  } else if (!devui.binaryExists) {
+    if (devui.binaryWallpaperPreview.startsWith('blob:')) {
+      URL.revokeObjectURL(devui.binaryWallpaperPreview);
+    }
+    devui.binaryWallpaperPreview = '';
+  }
+}
+
+async function refreshDevuiWallpaperPreview() {
+  if (!devui.binaryExists) return;
+  try {
+    const res = await axios.get('/api/system/devui/wallpaper/preview', {
+      responseType: 'blob',
+    });
+    if (devui.binaryWallpaperPreview.startsWith('blob:')) {
+      URL.revokeObjectURL(devui.binaryWallpaperPreview);
+    }
+    devui.binaryWallpaperPreview = URL.createObjectURL(res.data);
+  } catch {
+    devui.binaryWallpaperPreview = '';
+  }
 }
 
 async function loadDevuiStatus() {
@@ -2677,6 +2708,7 @@ function startDevuiDownloadPoll() {
       devui.status = devui.downloadMsg || 'devui 补丁文件已下载';
       ElMessage.success(devui.status);
       await loadDevuiStatus();
+      refreshDevuiWallpaperPreview();
       clearDevuiDownloadProgress(2000);
     } else if (devui.downloadState === 'failed') {
       stopDevuiDownloadPoll();
@@ -2745,12 +2777,12 @@ function pickDevuiWallpaper() {
 function selectDevuiWallpaper(event: Event) {
   const input = event.target as HTMLInputElement;
   const file = input.files?.[0] || null;
-  if (devui.wallpaperPreview) {
-    URL.revokeObjectURL(devui.wallpaperPreview);
+  if (devui.uploadWallpaperPreview) {
+    URL.revokeObjectURL(devui.uploadWallpaperPreview);
   }
   devui.wallpaperFile = file;
   devui.wallpaperName = file?.name || '';
-  devui.wallpaperPreview = file ? URL.createObjectURL(file) : '';
+  devui.uploadWallpaperPreview = file ? URL.createObjectURL(file) : '';
 }
 
 async function uploadDevuiWallpaper() {
@@ -2776,6 +2808,14 @@ async function uploadDevuiWallpaper() {
       return;
     }
     devui.status = res.data.msg || '壁纸已替换';
+    refreshDevuiWallpaperPreview();
+    if (devui.uploadWallpaperPreview) {
+      URL.revokeObjectURL(devui.uploadWallpaperPreview);
+    }
+    devui.uploadWallpaperPreview = '';
+    devui.wallpaperFile = null;
+    devui.wallpaperName = '';
+    if (devuiWallpaperInput.value) devuiWallpaperInput.value.value = '';
     ElMessage.success(devui.status);
   } catch (e: any) {
     devui.status = '替换壁纸失败: ' + (e?.message ?? e);
@@ -5088,8 +5128,11 @@ onUnmounted(() => {
     clearTimeout(devuiDownloadClearTimer);
     devuiDownloadClearTimer = null;
   }
-  if (devui.wallpaperPreview) {
-    URL.revokeObjectURL(devui.wallpaperPreview);
+  if (devui.binaryWallpaperPreview.startsWith('blob:')) {
+    URL.revokeObjectURL(devui.binaryWallpaperPreview);
+  }
+  if (devui.uploadWallpaperPreview) {
+    URL.revokeObjectURL(devui.uploadWallpaperPreview);
   }
   stopMmAllPolls();
   stopLocalSpeedTest();
@@ -7184,13 +7227,14 @@ onUnmounted(() => {
 }
 .devui-wallpaper-row {
   display: grid;
-  grid-template-columns: 120px minmax(0, 1fr);
+  grid-template-columns: repeat(2, 120px) minmax(0, 1fr);
   gap: 14px;
-  align-items: center;
+  align-items: end;
 }
 .devui-wallpaper-preview {
   width: 120px;
   aspect-ratio: 320 / 456;
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -7200,6 +7244,19 @@ onUnmounted(() => {
   background: rgba(0, 0, 0, 0.22);
   color: rgba(255, 255, 255, 0.46);
   font-size: 12px;
+}
+.devui-preview-label {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  padding: 5px 6px;
+  background: rgba(0, 0, 0, 0.38);
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 11px;
+  line-height: 1.2;
+  text-align: center;
+  z-index: 1;
 }
 .devui-wallpaper-preview img {
   width: 100%;

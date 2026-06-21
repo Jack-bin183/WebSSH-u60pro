@@ -1059,6 +1059,7 @@ func main() {
 		auth.GET("/api/system/devui/download/status", service.SystemDevuiDownloadStatusHandler)
 		auth.POST("/api/system/devui/control", service.SystemDevuiControlHandler)
 		auth.POST("/api/system/devui/autostart", service.SystemDevuiAutostartHandler)
+		auth.GET("/api/system/devui/wallpaper/preview", service.SystemDevuiWallpaperPreviewHandler)
 		auth.POST("/api/system/devui/wallpaper", service.SystemDevuiWallpaperHandler)
 		auth.GET("/api/system/rc-local", service.SystemRcLocalGetHandler)
 		auth.PUT("/api/system/rc-local", service.SystemRcLocalSaveHandler)

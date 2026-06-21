@@ -11,7 +11,7 @@ import (
 	"gossh/gin"
 	"image"
 	_ "image/jpeg"
-	_ "image/png"
+	"image/png"
 	"io"
 	"log/slog"
 	"math"
@@ -768,6 +768,19 @@ func SystemDevuiWallpaperHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"code": 0, "msg": "壁纸已替换", "data": getDevuiStatus()})
 }
 
+func SystemDevuiWallpaperPreviewHandler(c *gin.Context) {
+	img, err := loadDevuiWallpaperPreview()
+	if err != nil {
+		c.String(http.StatusNotFound, err.Error())
+		return
+	}
+	c.Header("Cache-Control", "no-store")
+	c.Header("Content-Type", "image/png")
+	if err := png.Encode(c.Writer, img); err != nil {
+		slog.Warn("encode devui wallpaper preview failed", "err", err)
+	}
+}
+
 func InitDevuiAutostart() {
 	if !getDevuiAutostartEnabled() {
 		return
@@ -1346,6 +1359,38 @@ func patchDevuiWallpaper(img image.Image) error {
 		return fmt.Errorf("写入 devui 壁纸失败: %w", err)
 	}
 	return nil
+}
+
+func loadDevuiWallpaperPreview() (image.Image, error) {
+	src, err := os.ReadFile(devuiBinaryPath())
+	if err != nil {
+		return nil, fmt.Errorf("读取 devui 文件失败: %w", err)
+	}
+	if err := verifyDevuiWallpaperDescriptor(src); err != nil {
+		return nil, err
+	}
+	if len(src) < devuiWallpaperDataOff+devuiWallpaperDataCap {
+		return nil, fmt.Errorf("devui 文件过小: 壁纸数据区超过文件大小")
+	}
+	data := src[devuiWallpaperDataOff : devuiWallpaperDataOff+devuiWallpaperDataCap]
+	img := image.NewNRGBA(image.Rect(0, 0, devuiWallpaperWidth, devuiWallpaperHeight))
+	offset := 0
+	for y := 0; y < devuiWallpaperHeight; y++ {
+		for x := 0; x < devuiWallpaperWidth; x++ {
+			rgb565 := uint16(data[offset]) | uint16(data[offset+1])<<8
+			alpha := data[offset+2]
+			r5 := uint8((rgb565 >> 11) & 0x1F)
+			g6 := uint8((rgb565 >> 5) & 0x3F)
+			b5 := uint8(rgb565 & 0x1F)
+			pos := img.PixOffset(x, y)
+			img.Pix[pos+0] = (r5 << 3) | (r5 >> 2)
+			img.Pix[pos+1] = (g6 << 2) | (g6 >> 4)
+			img.Pix[pos+2] = (b5 << 3) | (b5 >> 2)
+			img.Pix[pos+3] = alpha
+			offset += 3
+		}
+	}
+	return img, nil
 }
 
 func verifyDevuiWallpaperDescriptor(bin []byte) error {
