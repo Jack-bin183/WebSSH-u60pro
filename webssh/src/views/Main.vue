@@ -2638,7 +2638,8 @@ async function loadDevuiStatus() {
     applyDevuiStatus(res.data.data || {});
   } catch (e: any) {
     devui.status = '读取屏幕更新状态失败: ' + (e?.message ?? e);
-    ElMessage.error(devui.status);
+    console.error(e);
+    // ElMessage.error(devui.status);
   } finally {
     devui.loading = false;
   }
