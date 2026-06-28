@@ -202,7 +202,7 @@ func SysInit(c *gin.Context) {
 		Shell:       "sh",
 		PtyType:     "xterm-256color",
 		InitCmd:     "",
-		InitBanner:  "# https://github.com/o8oo8o/WebSSH",
+		InitBanner:  "# https://github.com/Primovist/WebSSH-u60pro",
 	}
 
 	err = sshConf.Create(&sshConf)

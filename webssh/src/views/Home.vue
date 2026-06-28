@@ -131,7 +131,7 @@
             <!-- 展开状态：向上箭头，点击收起 -->
             <button
               class="nav-anchor-toggle nav-anchor-toggle-open"
-              @click="data.navCollapsed = true"
+              @click="setNavCollapsed(true)"
               title="收起导航栏"
             >
               <span class="nav-anchor-icon">
@@ -146,7 +146,7 @@
           <button
             v-show="data.navCollapsed"
             class="nav-anchor-toggle nav-anchor-toggle-closed"
-            @click="data.navCollapsed = false"
+            @click="setNavCollapsed(false)"
             title="展开导航栏"
           >
             <span class="nav-anchor-icon">
@@ -770,7 +770,7 @@
     </div>
 
 
-    <div v-else>
+    <div v-else class="ssh-shell">
       <el-tabs v-model="data.current_host.session_id" type="card" closable @tab-remove="removeTab"
         @tab-click="selectTab">
         <el-tab-pane v-for="item in data.host_tabs" :key="item.session_id" :label="item.name" :name="item.session_id">
@@ -825,8 +825,8 @@
             </el-button-group>
           </template>
           <template #default>
-            <div id="term-data" style="margin: 1px">
-              <div :id="item.session_id" style="width: 100vw;height:100vh"></div>
+            <div id="term-data" class="term-data">
+              <div :id="item.session_id" class="terminal-host"></div>
             </div>
           </template>
         </el-tab-pane>
@@ -2480,8 +2480,7 @@ function connectHost(host: Host, isReconnect: boolean = false) {
             return;
           }
 
-          const headerHeight = data.navCollapsed ? 0 : 70;
-          connectTabElement.style.height = Math.floor(window.innerHeight - headerHeight) + "px";
+          fitTerminalContainer(connectTabElement);
           connHost.term.open(connectTabElement);
           connHost.fit.fit();
 
@@ -2642,6 +2641,20 @@ function setCurrentAcitveHost(sessionId: string) {
   windowResize();
 }
 
+function setNavCollapsed(collapsed: boolean) {
+  data.navCollapsed = collapsed;
+  nextTick(() => {
+    windowResize();
+    window.setTimeout(windowResize, 80);
+  });
+}
+
+function fitTerminalContainer(element: HTMLElement) {
+  const top = element.getBoundingClientRect().top;
+  const availableHeight = Math.max(120, Math.floor(window.innerHeight - top - 2));
+  element.style.height = `${availableHeight}px`;
+}
+
 /**
  * 更改窗口大小
  */
@@ -2660,8 +2673,7 @@ function windowResize() {
       console.log("调整窗口大小,没有获取到dom");
       return;
     }
-    const headerHeight = data.navCollapsed ? 0 : 70;
-    (connectTabElement as HTMLElement).style.height = Math.floor(window.innerHeight - headerHeight) + "px";
+    fitTerminalContainer(connectTabElement as HTMLElement);
 
     currentHost.fit.fit();
     //if (data.h !== currentHost.term.rows || data.w !== currentHost.term.cols) {
@@ -2869,6 +2881,22 @@ const terminalBackground = computed(() => {
   z-index: 2000;
 }
 
+.ssh-shell {
+  width: 100%;
+  min-width: 0;
+}
+
+.term-data {
+  margin: 0;
+  background: v-bind(terminalBackground);
+}
+
+.terminal-host {
+  width: 100%;
+  min-height: 120px;
+  overflow: hidden;
+}
+
 .nav {
   display: flex;
   align-items: center;
@@ -2922,6 +2950,8 @@ const terminalBackground = computed(() => {
   align-items: center;
   justify-content: center;
   backdrop-filter: blur(16px);
+  z-index: 3000;
+  pointer-events: auto;
   transition:
     transform 0.2s ease,
     background 0.2s ease,
@@ -2940,7 +2970,13 @@ const terminalBackground = computed(() => {
   
 }
 .nav-anchor-toggle-open {
-  top: calc(50px + var(--app-safe-top, 0px));
+  bottom: -15px;
+}
+
+.nav-anchor-toggle-closed {
+  position: fixed;
+  top: var(--app-safe-top, 0px);
+  z-index: 3001;
 }
 
 .nav-anchor-icon {

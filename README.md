@@ -1,90 +1,98 @@
 # WebSSH-u60pro
 
-A web-based management tool built specifically for the **U60Pro**, providing an in-browser SSH terminal, SFTP file manager, transparent proxy control, and direct access to router-native interfaces. Deploys as a single binary with no external dependencies.
+WebSSH-u60pro is a lightweight web management tool for the ZTE U60Pro. It provides browser-based SSH access, SFTP file management, device status panels, router-specific network controls, and common maintenance tools in a single deployable binary.
 
----
+The project is designed for ARM64 Linux devices and stores its local data in SQLite, so it can run directly on the router without an external database.
 
 ## Features
 
 ### Web SSH Terminal
-- Full-featured in-browser terminal (xterm.js) over WebSocket-proxied SSH sessions
-- Manage multiple saved connection profiles; credentials stored AES-encrypted
-- Automatic terminal resize synchronisation
-- Execute commands across sessions; disconnect individual sessions on demand
+
+- Browser terminal powered by xterm.js and WebSocket SSH sessions
+- Multiple saved connection profiles
+- AES-encrypted credential storage
+- Automatic terminal resize synchronization
+- Multi-session command execution
+- Per-session reconnect, disconnect, and terminal clear controls
+- Command notes for saving frequently used snippets
 
 ### SFTP File Manager
-- Browse directories, upload and download files
-- Create directories and files, rename, delete, change permissions (chmod)
-- Edit text files directly in the browser
-- Compress directories and extract archives
 
-### Built-in SSHD Server
-- Manage local SSHD user accounts (CRUD)
-- Manage SSH certificates (authorized_keys) with plain-text export
-- Start/stop service control
+- Browse remote directories
+- Upload and download files
+- Create files and directories
+- Rename, delete, and change permissions
+- Edit small text files directly in the browser
+- Compress directories and extract supported archives
 
-### Mihomo Transparent Proxy
-- **One-click install / uninstall**: downloads the Mihomo ARM64 binary and control script `mm.sh` from a GitHub Release, with automatic proxy-URL fallback for faster downloads
-- **Start / stop / restart / reload ipset**: controls the transparent proxy via `mm.sh` with live output streaming
-- **Data file update**: one-click update of `chnroute.txt`, `chnroute6.txt`, `GeoSite.dat`, and `geoip.metadb`, with progress bar and cancellation support
-- **Boot autostart**: on webssh startup, detects a marker file and runs `mm.sh start` in the background if autostart is enabled
-- **Inline config editor**: edit `config.yaml` directly in the browser; automatic backup before saving
-- **Status overview**: running state, PID, uptime, API reachability, version info, and data-file inventory
+### Built-in SSHD Management
 
-### ZTE Router-Specific Interfaces
-- **UBUS JSON-RPC proxy**: batch-call router low-level UBUS interfaces
-- **WiFi power-saving mode (PSM)**: read and toggle WiFi power-save / high-performance mode
-- **WiFi radio switch**: independently toggle 2.4 GHz / 5 GHz radios
-- **Network AMBR**: read current AMBR rate-limit configuration
+- Manage local SSHD users
+- Manage authorized SSH certificates
+- Enable, disable, edit, and delete SSHD records from the web UI
 
-### Auto-Update
-- Checks the latest version from GitHub Releases with multiple proxy-URL fallbacks
-- Downloads the new binary in the background, then replaces and restarts; full progress display
+### U60Pro Device Panels
 
-### Access Control (NetFilter)
-- IP allowlist / blocklist rule management enforced at the middleware layer
+- Device uptime, connection state, battery, and network status
+- 4G / 5G signal details and carrier information
+- UBUS JSON-RPC access for router-native data
+- WiFi power-saving / high-performance mode control
+- 2.4 GHz and 5 GHz radio controls
+- Network AMBR status
 
-### Miscellaneous
-- **Command notes**: save frequently used command snippets and paste them into the SSH terminal in one click
-- **Policy configuration**: CRUD management for custom policy rules
-- **Login audit**: records login events with searchable history
-- **Open ADB**: triggers the ADB debug interface via `usb_switch`
-- **TLS support**: place `cert.pem` + `key.key` in the working directory to enable HTTPS automatically
+### System Tools
 
----
+- Open ADB debug interface
+- Local speed test
+- SMS forwarding controls
+- Device native UI service controls
+- File permission helper
+- Login audit history
+- Access control rules
+
+### Updates And Security
+
+- Web-based update check and install flow
+- Download progress and cancellation support
+- IP allowlist / blocklist middleware
+- First-run initialization wizard
+- Optional HTTPS when `cert.pem` and `key.key` are placed in the working directory
 
 ## Tech Stack
 
 | Layer | Technology |
-|---|---|
-| Backend | Go 1.21+, vendored gin / GORM / SQLite / WebSocket / crypto-ssh / sftp |
+| --- | --- |
+| Backend | Go 1.21+, vendored Gin / GORM / SQLite / WebSocket / crypto-ssh / SFTP |
 | Frontend | Vue 3 + TypeScript + Vite + Element Plus |
-| Database | SQLite (default `gowebssh.db`, stored in the working directory) |
-| Config file | TOML at `~/.GoWebSSH/GoWebSSH.toml` (or override with `-ConfigDir`) |
-| Deployment target | Linux ARM64 (ZTE U60Pro, OpenWrt kernel) |
+| Terminal | xterm.js |
+| Database | SQLite |
+| Config | TOML at `~/.GoWebSSH/GoWebSSH.toml`, or `-ConfigDir` |
+| Target | Linux ARM64 on ZTE U60Pro |
 
----
-
-## Build & Deploy
+## Build
 
 ### Requirements
-- Go 1.21+
-- Node.js 18+ (frontend build)
-- `upx` (optional, for binary compression)
 
-### One-liner (set VERSION as needed)
+- Go 1.21+
+- Node.js 18+
+- npm
+- `upx` optional, only for binary compression
+
+### One-liner
+
+Set `VERSION` to the release identifier you want embedded in the binary.
 
 ```bash
 cd webssh && npm install && npm run build \
   && rsync -a --delete dist/ ../gossh/webroot/ \
   && cd ../gossh \
-  && VERSION=20260514_1414 \
+  && VERSION=dev \
   && CGO_ENABLED=0 GOOS=linux GOARCH=arm64 \
      go build -ldflags="-s -w -X main.version=${VERSION}" -o webssh \
   && upx --best --lzma webssh
 ```
 
-### Step by step
+### Step By Step
 
 ```bash
 # 1. Build the frontend
@@ -92,53 +100,33 @@ cd webssh
 npm install
 npm run build
 
-# 2. Sync static assets into the backend
+# 2. Copy frontend assets into the backend webroot
 rsync -a --delete dist/ ../gossh/webroot/
 
-# 3. Cross-compile the backend (target: ARM64 Linux)
+# 3. Cross-compile the backend for ARM64 Linux
 cd ../gossh
 CGO_ENABLED=0 GOOS=linux GOARCH=arm64 \
   go build -ldflags="-s -w -X main.version=dev" -o webssh
 
-# 4. (Optional) Compress with UPX
+# 4. Optional: compress the binary
 upx --best --lzma webssh
 ```
 
-### Upload and run
+## Deploy
+
+Copy the compiled binary to the U60Pro and run it from its working directory.
 
 ```bash
-# Copy the binary to the router
-scp webssh root@<router-ip>:/data/plugins/WebSSH/
+scp gossh/webssh root@<router-ip>:/data/kano_plugins/webssh/
 
-# Run on the router (SQLite database is stored in the working directory)
-cd /data/plugins/WebSSH && ./webssh
+ssh root@<router-ip>
+cd /data/kano_plugins/webssh
+./webssh
 ```
 
-Listens on `:8899` by default. A setup wizard runs on the first visit.
+The service listens on `:8899` by default. Open the web UI in a browser and complete the first-run setup wizard.
 
----
-
-## Mihomo Transparent Proxy
-
-All Mihomo-related files live under `/data/plugins/mihomo/` on the router.
-
-### First-time setup
-
-1. In the WebSSH UI → **Mihomo** → **Install** tab, click "Install Mihomo"
-   - Automatically downloads `mihomo-linux-arm64` and `mm.sh` from the `latest-data` GitHub Release
-2. Switch to the **Config** tab and paste your `config.yaml` (Clash Meta format)
-3. Return to the **Overview** tab and click "Start"
-
-### Keeping data files current
-
-- **Automatic**: a GitHub Actions workflow rebuilds the Release every day at UTC 02:00 with the latest chnroute / GeoSite / GeoIP data and Mihomo binary
-- **Manual**: UI → **Data Update** tab → "Update Now"
-
-### Boot autostart
-
-Enable the "Boot autostart" toggle at the bottom of the Overview tab. After a router reboot, webssh will automatically call `mm.sh start` in the background to bring Mihomo up.
-
----
+SQLite data is stored relative to the process working directory unless configured otherwise.
 
 ## Frontend Development
 
@@ -146,28 +134,54 @@ Enable the "Boot autostart" toggle at the bottom of the Overview tab. After a ro
 cd webssh
 npm install
 npm run dev
-# Open http://127.0.0.1:3000/ — hot reload enabled
 ```
 
----
+The Vite dev server starts at `http://127.0.0.1:3000/` by default.
+
+Useful frontend commands:
+
+```bash
+npm run type-check
+npm run build
+npm run preview
+```
+
+## Backend Development
+
+```bash
+cd gossh
+go build -o webssh
+./webssh
+```
+
+For local full-stack testing, build the frontend first and sync `webssh/dist/` into `gossh/webroot/`.
 
 ## Repository Layout
 
-```
-gossh/           Go backend (all dependencies vendored locally)
-  main.go        Entry point, route registration, auto-update logic
-  app/config/    Configuration loading
-  app/model/     Database models
-  app/service/   Business logic (SSH, SFTP, SSHD, Mihomo, ZTE UBUS, …)
-  webroot/       Compiled frontend static assets
-webssh/          Vue 3 frontend source
-mihomo/          mm.sh proxy control script
-.github/
-  workflows/
-    update-mihomo-data.yml   Daily automated Mihomo data release workflow
+```text
+gossh/                Go backend
+  main.go             Entry point and route registration
+  app/config/         Configuration loading
+  app/middleware/     HTTP middleware
+  app/model/          SQLite models
+  app/service/        SSH, SFTP, system, network, update, and device services
+  webroot/            Compiled frontend static assets
+
+webssh/               Vue 3 frontend
+  src/views/          Main pages
+  src/components/     Management panels
+  src/stores/         Pinia state
+  public/             PWA and static assets
+
+docs/                 Project notes and router interface documentation
 ```
 
----
+## Runtime Notes
+
+- Run the binary from a persistent directory so SQLite data and generated files survive restarts.
+- Place `cert.pem` and `key.key` in the working directory to enable HTTPS.
+- Keep a backup of the SQLite database before replacing production binaries.
+- The first account is created during initialization.
 
 ## License
 
