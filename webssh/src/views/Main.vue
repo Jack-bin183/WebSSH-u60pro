@@ -5065,11 +5065,10 @@ async function openDeviceDialog() {
 
 // 弹窗打开时锁住底层页面滚动。普通浏览器用 fixed body 保留滚动位置；
 // iOS PWA 的 visual viewport 会在 select/picker 后变化，fixed body 容易造成触摸坐标错位，
-// 所以 PWA/iframe 内层只关闭滚动，不移动 body。
+// 所以 PWA 只关闭滚动，不移动 body。
 let lockedScrollY = 0;
 function isStandalonePwaRuntime() {
-  const standalone = Boolean((navigator as Navigator & { standalone?: boolean }).standalone);
-  return standalone || document.documentElement.classList.contains('webssh-pwa-frame-inner');
+  return Boolean((navigator as Navigator & { standalone?: boolean }).standalone);
 }
 
 function resetDialogScrollLock() {
@@ -7399,6 +7398,11 @@ onUnmounted(() => {
     font-size: 11px;
     line-height: 1.45;
   }
+}
+
+:global(html.ios-pwa .page) {
+  min-height: calc(100dvh - env(safe-area-inset-top, 0px)) !important;
+  padding-bottom: 0 !important;
 }
 
 </style>

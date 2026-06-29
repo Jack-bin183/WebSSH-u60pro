@@ -118,8 +118,13 @@
 
                   <!-- admin 角色才能管理 -->
                   <el-button v-if="globalStore.isAdmin === 'Y'" type="danger" :icon="Tools" @click="toManage"></el-button>
-                  <el-popconfirm confirmButtonText="重启" cancelButtonText="取消" icon="el-icon-info" iconColor="red"
-                    title="确定重启设备吗？" @confirm="rebootDevice">
+                  <el-popconfirm 
+                    placement="bottom-end"
+                    confirmButtonText="重启" 
+                    cancelButtonText="取消" 
+                    icon="el-icon-info"
+                    title="确定重启设备吗？"
+                    @confirm="rebootDevice">
                     <template #reference>
                       <el-button :icon="SwitchButton" type="danger"></el-button>
                     </template>
@@ -317,22 +322,22 @@
               :title="'主机管理'"
               v-model="data.modify_devices_dialog_visible"
               :width="'95%'"
-              :style="{ maxWidth: '780px', top: '20px' }"
+              :style="{ maxWidth: '1040px', top: '20px' }"
               custom-class="modern-dialog host-manage-dialog"
               :modal-append-to-body="true"
               :destroy-on-close="true"
               :center="false"
-              :fullscreen="isMobile"
             >
               <!-- 搜索输入 -->
               <el-input v-model="searchHost" placeholder="名称及主机搜索" clearable style="margin-bottom: 10px; width: 100%;" />
 
-              <el-table :data="filterHostTable" :height="tableHeight" :show-overflow-tooltip="true" style="width: 100%;">
-                <el-table-column sortable fixed="left" width="150" property="name" label="名称" />
-                <el-table-column sortable width="150" property="address" label="主机" />
+              <div class="mobile-table-wrap">
+                <el-table class="host-manage-table" :data="filterHostTable" :height="tableHeight" :show-overflow-tooltip="true" style="width: 100%;">
+                <el-table-column sortable fixed="left" width="140" property="name" label="名称" />
+                <el-table-column sortable width="160" property="address" label="主机" />
                 <el-table-column sortable width="100" property="user" label="用户" />
                 <el-table-column sortable width="90" property="port" label="端口" />
-                <el-table-column label="操作" fixed="right" width="250">
+                <el-table-column label="操作" fixed="right" width="230">
                   <template #default="scope">
                     <el-button size="small" @click="editHost(scope.row)">编辑</el-button>
                     <el-popconfirm confirmButtonText="删除" cancelButtonText="取消" icon="el-icon-info" iconColor="red"
@@ -345,10 +350,13 @@
                   </template>
                 </el-table-column>
               </el-table>
+              </div>
 
-              <span slot="footer" class="dialog-footer">
-                <el-button style="margin-top: 10px;" @click="data.modify_devices_dialog_visible = false">关闭</el-button>
-              </span>
+              <template #footer>
+                <div class="dialog-footer mobile-dialog-footer">
+                  <el-button @click="data.modify_devices_dialog_visible = false">关闭</el-button>
+                </div>
+              </template>
             </el-dialog>
 
             <!-- 修改密码 -->
@@ -756,7 +764,13 @@
             </el-dialog>
 
             <!-- 管理 -->
-            <el-dialog title="系统管理" v-model="data.manage_dialog_visible" v-bind:fullscreen="true">
+            <el-dialog
+              title="系统管理"
+              v-model="data.manage_dialog_visible"
+              :width="'95%'"
+              :style="{ maxWidth: '1040px', top: '20px' }"
+              custom-class="modern-dialog system-manage-dialog"
+            >
               <Manage></Manage>
             </el-dialog>
           </div>
@@ -1420,9 +1434,15 @@ const windowWidth = ref(window.innerWidth)
 const isMobile = computed(() => windowWidth.value <= 768)
 
 const tableHeight = computed(() => {
-  return isMobile.value
-    ? Math.max(window.innerHeight - 190, 300)
-    : 500
+  const rows = Math.max(filterHostTable.value.length, 1);
+  const contentHeight = 52 + rows * 48;
+
+  if (isMobile.value) {
+    const maxHeight = Math.max(Math.floor(window.innerHeight * 0.48), 220);
+    return Math.min(contentHeight, maxHeight);
+  }
+
+  return Math.min(contentHeight, 500);
 })
 
 function updateWindowWidth() {
@@ -2983,6 +3003,10 @@ const terminalBackground = computed(() => {
   z-index: 3001;
 }
 
+:global(html.ios-pwa .nav-anchor-toggle-closed) {
+  top: env(safe-area-inset-top, 0px);
+}
+
 .nav-anchor-icon {
   width: 25px;
   border-radius: 999px;
@@ -3390,6 +3414,12 @@ const terminalBackground = computed(() => {
   text-align: center;
 }
 
+.mobile-table-wrap {
+  min-width: 0;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
 @media (max-width: 768px) {
   .nav .right {
     text-align: left !important;
@@ -3399,12 +3429,60 @@ const terminalBackground = computed(() => {
     border-radius: 0;
   }
 
+  :deep(.host-manage-dialog),
+  :deep(.system-manage-dialog) {
+    display: flex;
+    flex-direction: column;
+    width: calc(100vw - 20px) !important;
+    max-height: calc(100dvh - 24px - env(safe-area-inset-top, 0px));
+    margin-top: calc(12px + env(safe-area-inset-top, 0px)) !important;
+    overflow: hidden;
+  }
+
+  :deep(.host-manage-dialog .el-dialog__header),
+  :deep(.system-manage-dialog .el-dialog__header) {
+    flex: 0 0 auto;
+    padding: 14px 16px 12px;
+  }
+
   :deep(.modern-dialog .el-dialog__body) {
     padding: 14px;
   }
 
+  :deep(.host-manage-dialog .el-dialog__body),
+  :deep(.system-manage-dialog .el-dialog__body) {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+    padding: 12px;
+    -webkit-overflow-scrolling: touch;
+  }
+
   :deep(.modern-dialog .el-dialog__footer) {
     padding: 12px 14px 16px;
+  }
+
+  :deep(.host-manage-dialog .el-dialog__footer) {
+    flex: 0 0 auto;
+    padding: 10px 12px calc(10px + env(safe-area-inset-bottom, 0px));
+  }
+
+  :deep(.host-manage-dialog .host-manage-table) {
+    min-width: 720px;
+  }
+
+  :deep(.host-manage-dialog .el-table__fixed-right) {
+    box-shadow: -8px 0 18px rgba(15, 23, 42, 0.08);
+  }
+
+  .mobile-dialog-footer {
+    justify-content: stretch;
+  }
+
+  .mobile-dialog-footer :deep(.el-button) {
+    flex: 1 1 auto;
+    min-width: 0;
+    margin: 0;
   }
 
   .update-meta-grid,

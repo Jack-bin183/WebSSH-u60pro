@@ -10,8 +10,6 @@ import router from "./router";
 
 import { useGlobalStore } from "./stores/store";
 
-const PWA_FRAME_PARAM = "__webssh_pwa_frame";
-
 function isIOSStandalonePwa() {
     const standalone = Boolean((navigator as Navigator & { standalone?: boolean }).standalone);
     const iosDevice = /iPad|iPhone|iPod/.test(navigator.userAgent);
@@ -19,43 +17,9 @@ function isIOSStandalonePwa() {
     return standalone && (iosDevice || iPadDesktopMode);
 }
 
-function isPwaFrame() {
-    return new URL(window.location.href).searchParams.get(PWA_FRAME_PARAM) === "1";
+if (isIOSStandalonePwa()) {
+    document.documentElement.classList.add("ios-pwa");
 }
-
-function buildPwaFrameUrl() {
-    const url = new URL(window.location.href);
-    url.searchParams.set(PWA_FRAME_PARAM, "1");
-    return url.toString();
-}
-
-function mountPwaFrameShell() {
-    document.documentElement.classList.add("ios-pwa", "webssh-pwa-frame-outer");
-
-    const root = document.getElementById("app");
-    if (!root) return;
-
-    root.innerHTML = "";
-
-    const shell = document.createElement("div");
-    shell.className = "webssh-pwa-frame-shell";
-
-    const frame = document.createElement("iframe");
-    frame.className = "webssh-pwa-frame";
-    frame.title = "WebSSH";
-    frame.src = buildPwaFrameUrl();
-    frame.setAttribute("allow", "clipboard-read; clipboard-write; fullscreen");
-
-    shell.appendChild(frame);
-    root.appendChild(shell);
-}
-
-if (isIOSStandalonePwa() && !isPwaFrame()) {
-    mountPwaFrameShell();
-} else {
-    if (isPwaFrame()) {
-        document.documentElement.classList.add("webssh-pwa-frame-inner");
-    }
 
     const app = createApp(App);
 
@@ -145,4 +109,3 @@ if (isIOSStandalonePwa() && !isPwaFrame()) {
             });
         });
     }
-}

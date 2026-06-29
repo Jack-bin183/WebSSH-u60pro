@@ -23,59 +23,58 @@
       }
       html.ios-pwa {
         box-sizing: border-box;
+        --app-safe-top: 0px;
+        --app-safe-bottom: 0px;
         background: #315697; /* Main 页浅色渐变起点 */
       }
 
-      html.webssh-pwa-frame-inner {
-        --app-safe-top: 0px;
-        --app-safe-right: 0px;
-        --app-safe-bottom: 0px;
-        --app-safe-left: 0px;
+      html.ios-pwa body {
+        height: auto;
+        min-height: 100dvh;
+        padding-top: env(safe-area-inset-top, 0px);
+        box-sizing: border-box;
+        background: #315697;
       }
 
-      html.webssh-pwa-frame-inner input,
-      html.webssh-pwa-frame-inner textarea,
-      html.webssh-pwa-frame-inner select,
-      html.webssh-pwa-frame-inner .el-input__inner,
-      html.webssh-pwa-frame-inner .el-textarea__inner,
-      html.webssh-pwa-frame-inner .el-select__input {
+      html.ios-pwa body::before {
+        content: "";
+        position: fixed;
+        top: 0;
+        right: 0;
+        left: 0;
+        height: env(safe-area-inset-top, 0px);
+        background: #315697;
+        pointer-events: none;
+        z-index: 3000;
+      }
+
+      html.ios-pwa #app {
+        height: auto;
+        min-height: calc(100dvh - env(safe-area-inset-top, 0px));
+      }
+
+      html.ios-pwa input,
+      html.ios-pwa textarea,
+      html.ios-pwa select,
+      html.ios-pwa .el-input__inner,
+      html.ios-pwa .el-textarea__inner,
+      html.ios-pwa .el-select__input {
         font-size: 16px !important;
       }
 
-      html.webssh-pwa-frame-inner .el-select__selected-item,
-      html.webssh-pwa-frame-inner .el-select__placeholder {
+      html.ios-pwa .el-select__selected-item,
+      html.ios-pwa .el-select__placeholder {
         font-size: inherit;
-      }
-
-      html.webssh-pwa-frame-outer,
-      html.webssh-pwa-frame-outer body,
-      html.webssh-pwa-frame-outer #app {
-        width: 100%;
-        height: 100%;
-        overflow: hidden;
-      }
-
-      .webssh-pwa-frame-shell {
-        position: fixed;
-        top: var(--app-safe-top);
-        right: var(--app-safe-right);
-        bottom: var(--app-safe-bottom);
-        left: var(--app-safe-left);
-        overflow: hidden;
-        background: #0f172a;
-      }
-
-      .webssh-pwa-frame {
-        display: block;
-        width: 100%;
-        height: 100%;
-        border: 0;
-        background: #0f172a;
       }
 
       @media (prefers-color-scheme: dark) {
         html.ios-pwa {
-          background: #263144; /* 夜间模式深色渐变起点，需同等优先级覆盖上面的浅色 */
+          background: #0f172a; /* 夜间模式深色渐变起点，需同等优先级覆盖上面的浅色 */
+        }
+
+        html.ios-pwa body,
+        html.ios-pwa body::before {
+          background: #0f172a;
         }
       }
 
@@ -83,6 +82,7 @@
       body,
       #app {
         height: 100%;
+        min-height: 100dvh;
         margin: 0px;
         padding: 0px;
         font-family: "Helvetica Neue", Helvetica, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "微软雅黑", Arial, sans-serif;
