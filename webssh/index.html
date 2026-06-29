@@ -16,12 +16,61 @@
     <title>WebSSH for U60Pro</title>
     <style>
       :root {
-        --app-safe-top: 0px;
+        --app-safe-top: env(safe-area-inset-top, 0px);
+        --app-safe-right: env(safe-area-inset-right, 0px);
+        --app-safe-bottom: env(safe-area-inset-bottom, 0px);
+        --app-safe-left: env(safe-area-inset-left, 0px);
       }
       html.ios-pwa {
-        padding-top: 60px;
         box-sizing: border-box;
         background: #315697; /* Main 页浅色渐变起点 */
+      }
+
+      html.webssh-pwa-frame-inner {
+        --app-safe-top: 0px;
+        --app-safe-right: 0px;
+        --app-safe-bottom: 0px;
+        --app-safe-left: 0px;
+      }
+
+      html.webssh-pwa-frame-inner input,
+      html.webssh-pwa-frame-inner textarea,
+      html.webssh-pwa-frame-inner select,
+      html.webssh-pwa-frame-inner .el-input__inner,
+      html.webssh-pwa-frame-inner .el-textarea__inner,
+      html.webssh-pwa-frame-inner .el-select__input {
+        font-size: 16px !important;
+      }
+
+      html.webssh-pwa-frame-inner .el-select__selected-item,
+      html.webssh-pwa-frame-inner .el-select__placeholder {
+        font-size: inherit;
+      }
+
+      html.webssh-pwa-frame-outer,
+      html.webssh-pwa-frame-outer body,
+      html.webssh-pwa-frame-outer #app {
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+      }
+
+      .webssh-pwa-frame-shell {
+        position: fixed;
+        top: var(--app-safe-top);
+        right: var(--app-safe-right);
+        bottom: var(--app-safe-bottom);
+        left: var(--app-safe-left);
+        overflow: hidden;
+        background: #0f172a;
+      }
+
+      .webssh-pwa-frame {
+        display: block;
+        width: 100%;
+        height: 100%;
+        border: 0;
+        background: #0f172a;
       }
 
       @media (prefers-color-scheme: dark) {
@@ -62,6 +111,9 @@
       // 兜底处理不匹配 display-mode 媒体查询的旧版 iOS
       if (navigator.standalone) {
         document.documentElement.classList.add("ios-pwa");
+        document
+          .querySelector('meta[name="viewport"]')
+          ?.setAttribute("content", "width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover");
       }
     </script>
   </head>

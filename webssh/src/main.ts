@@ -10,91 +10,139 @@ import router from "./router";
 
 import { useGlobalStore } from "./stores/store";
 
-const app = createApp(App);
+const PWA_FRAME_PARAM = "__webssh_pwa_frame";
 
-const pinia = createPinia();
-pinia.use(piniaPluginPersistedstate);
+function isIOSStandalonePwa() {
+    const standalone = Boolean((navigator as Navigator & { standalone?: boolean }).standalone);
+    const iosDevice = /iPad|iPhone|iPod/.test(navigator.userAgent);
+    const iPadDesktopMode = navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1;
+    return standalone && (iosDevice || iPadDesktopMode);
+}
 
-app.use(pinia);
-app.use(ElementPlus, { zIndex: 2000 });
-// app.use(ElementPlus, { size: "small", zIndex: 2000 });
-app.use(router);
+function isPwaFrame() {
+    return new URL(window.location.href).searchParams.get(PWA_FRAME_PARAM) === "1";
+}
 
-let globalStore = useGlobalStore();
+function buildPwaFrameUrl() {
+    const url = new URL(window.location.href);
+    url.searchParams.set(PWA_FRAME_PARAM, "1");
+    return url.toString();
+}
 
-// 导航守卫 配置
-// 使用 router.beforeEach 注册一个全局前置守卫，判断用户是否登陆
-router.beforeEach((to, from) => {
-    if ((!globalStore.isInit) && to.name === "SysInit") {
-        return true;
+function mountPwaFrameShell() {
+    document.documentElement.classList.add("ios-pwa", "webssh-pwa-frame-outer");
+
+    const root = document.getElementById("app");
+    if (!root) return;
+
+    root.innerHTML = "";
+
+    const shell = document.createElement("div");
+    shell.className = "webssh-pwa-frame-shell";
+
+    const frame = document.createElement("iframe");
+    frame.className = "webssh-pwa-frame";
+    frame.title = "WebSSH";
+    frame.src = buildPwaFrameUrl();
+    frame.setAttribute("allow", "clipboard-read; clipboard-write; fullscreen");
+
+    shell.appendChild(frame);
+    root.appendChild(shell);
+}
+
+if (isIOSStandalonePwa() && !isPwaFrame()) {
+    mountPwaFrameShell();
+} else {
+    if (isPwaFrame()) {
+        document.documentElement.classList.add("webssh-pwa-frame-inner");
     }
 
-    if (to.name === "Login") {
-        return true;
-    }
+    const app = createApp(App);
 
-    var local_auth = localStorage.getItem("auth");
-    if (local_auth === "yes" && globalStore.isLogin) {
-        return true
-    }
+    const pinia = createPinia();
+    pinia.use(piniaPluginPersistedstate);
 
-    router.push({ "name": "Login" });
-    return false;
-});
+    app.use(pinia);
+    app.use(ElementPlus, { zIndex: 2000 });
+    // app.use(ElementPlus, { size: "small", zIndex: 2000 });
+    app.use(router);
 
+    let globalStore = useGlobalStore();
 
-//////////////
-//   拦截器
-//////////////
-
-axios.interceptors.request.use(
-    (req) => {
-        let basePath = window.location.pathname.replace("/app/", "");
-
-        if (import.meta.env.VITE_ROUTE_MODE === "WebHistory") {
-            if (import.meta.env.VITE_WEB_BASE_DIR) {
-                basePath = `${import.meta.env.VITE_WEB_BASE_DIR}`;
-            } else {
-                basePath = "";
-            }
+    // 导航守卫 配置
+    // 使用 router.beforeEach 注册一个全局前置守卫，判断用户是否登陆
+    router.beforeEach((to, from) => {
+        if ((!globalStore.isInit) && to.name === "SysInit") {
+            return true;
         }
-        // req.url = `${basePath}${req.url}`;
-        // req.url = `http://127.0.0.1:3000${req.url}`;
-        req.url = `${req.url}`;
-        // 在发送请求之前加token
-        req.headers.Time = String(new Date().getTime());
-        req.headers.Authorization = localStorage.getItem("token");
-        return req;
-    },
-    (err) => {
-        return Promise.reject(err);
-    }
-);
 
-// 添加响应拦截器
-axios.interceptors.response.use(
-    (res) => {
-        let newToken = res.headers["newtoken"];
-        if (newToken) {
-            // 若有newtoken则刷新token
-            localStorage.setItem("token", newToken);
+        if (to.name === "Login") {
+            return true;
         }
-        return res;
-    },
-    (err) => {
-        if (err.response && (err.response.status === 401)) {
-            router.replace({ "name": "Login" });
+
+        var local_auth = localStorage.getItem("auth");
+        if (local_auth === "yes" && globalStore.isLogin) {
+            return true
         }
-        return Promise.reject(err);
-    }
-)
 
-app.mount("#app");
-
-if ("serviceWorker" in navigator && import.meta.env.PROD) {
-    window.addEventListener("load", () => {
-        navigator.serviceWorker.register(new URL("sw.js", window.location.href), { scope: "./" }).catch((err) => {
-            console.warn("Service worker registration failed:", err);
-        });
+        router.push({ "name": "Login" });
+        return false;
     });
+
+
+    //////////////
+    //   拦截器
+    //////////////
+
+    axios.interceptors.request.use(
+        (req) => {
+            let basePath = window.location.pathname.replace("/app/", "");
+
+            if (import.meta.env.VITE_ROUTE_MODE === "WebHistory") {
+                if (import.meta.env.VITE_WEB_BASE_DIR) {
+                    basePath = `${import.meta.env.VITE_WEB_BASE_DIR}`;
+                } else {
+                    basePath = "";
+                }
+            }
+            // req.url = `${basePath}${req.url}`;
+            // req.url = `http://127.0.0.1:3000${req.url}`;
+            req.url = `${req.url}`;
+            // 在发送请求之前加token
+            req.headers.Time = String(new Date().getTime());
+            req.headers.Authorization = localStorage.getItem("token");
+            return req;
+        },
+        (err) => {
+            return Promise.reject(err);
+        }
+    );
+
+    // 添加响应拦截器
+    axios.interceptors.response.use(
+        (res) => {
+            let newToken = res.headers["newtoken"];
+            if (newToken) {
+                // 若有newtoken则刷新token
+                localStorage.setItem("token", newToken);
+            }
+            return res;
+        },
+        (err) => {
+            if (err.response && (err.response.status === 401)) {
+                router.replace({ "name": "Login" });
+            }
+            return Promise.reject(err);
+        }
+    )
+
+    app.mount("#app");
+
+    if ("serviceWorker" in navigator && import.meta.env.PROD) {
+        window.addEventListener("load", () => {
+            navigator.serviceWorker.register(new URL("sw.js", window.location.href), { scope: "./" }).catch((err) => {
+                console.warn("Service worker registration failed:", err);
+            });
+        });
+    }
 }

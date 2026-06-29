@@ -1299,13 +1299,19 @@
       <section class="settings-section">
         <div class="settings-section-title">网络制式</div>
         <div class="settings-inline network-mode-row">
-          <el-select
-            v-model="networkForm.net_select"
-            class="net-select settings-select"
-            popper-class="net-select-popper"
-            placeholder="未知">
-            <el-option v-for="opt in netSelectOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
-          </el-select>
+          <div class="network-mode-options" role="radiogroup" aria-label="网络制式">
+            <button
+              v-for="opt in netSelectOptions"
+              :key="opt.value"
+              type="button"
+              class="network-mode-option"
+              :class="{ active: networkForm.net_select === opt.value }"
+              :aria-checked="networkForm.net_select === opt.value"
+              role="radio"
+              @click="networkForm.net_select = opt.value">
+              {{ opt.label }}
+            </button>
+          </div>
           <el-button class="network-mode-apply" type="primary" :loading="networkApplying === 'mode'" @click="applyNetworkMode">应用</el-button>
         </div>
       </section>
@@ -1325,7 +1331,7 @@
       </section>
 
       <section class="settings-section">
-        <div class="settings-section-title">5G 锁频段</div>
+        <div class="settings-section-title">5G SA 锁频段</div>
         <el-checkbox-group v-model="networkForm.nr_bands" class="band-checkbox-grid">
           <el-checkbox-button v-for="band in nrBandOptions" :key="band" :label="band">N{{ band }}</el-checkbox-button>
         </el-checkbox-group>
@@ -5057,17 +5063,39 @@ async function openDeviceDialog() {
   }
 }
 
-// 弹窗打开时锁住底层页面滚动。index.html 把 html/body/#app 都设为 height:100%,
-// 整页滚动发生在 html/window 上。若直接给 html 设 overflow:hidden,浏览器会把滚动位置
-// 强制归零（整页跳到顶部），且关闭后无法恢复——这正是“点开弹窗页面跳回顶部”的根因。
-// 改用「固定 body + 记录/还原 scrollY」：锁定时把 body 设为 position:fixed 并上移 scrollY,
-// 既挡住背景滚动又保留视觉位置；关闭时还原样式并 scrollTo 回原位。
+// 弹窗打开时锁住底层页面滚动。普通浏览器用 fixed body 保留滚动位置；
+// iOS PWA 的 visual viewport 会在 select/picker 后变化，fixed body 容易造成触摸坐标错位，
+// 所以 PWA/iframe 内层只关闭滚动，不移动 body。
 let lockedScrollY = 0;
+function isStandalonePwaRuntime() {
+  const standalone = Boolean((navigator as Navigator & { standalone?: boolean }).standalone);
+  return standalone || document.documentElement.classList.contains('webssh-pwa-frame-inner');
+}
+
+function resetDialogScrollLock() {
+  const body = document.body;
+  const html = document.documentElement;
+  body.style.position = '';
+  body.style.top = '';
+  body.style.left = '';
+  body.style.right = '';
+  body.style.width = '';
+  body.style.height = '';
+  body.style.overflow = '';
+  html.style.overflow = '';
+}
+
 watch([deviceDialogVisible, mmDialogVisible, networkSettingsDialogVisible, wifiSettingsDialogVisible, systemToolsDialogVisible], ([deviceOpen, mmOpen, networkOpen, wifiOpen, toolsOpen]) => {
   const anyOpen = deviceOpen || mmOpen || networkOpen || wifiOpen || toolsOpen;
   const body = document.body;
+  const html = document.documentElement;
   if (anyOpen) {
     lockedScrollY = window.scrollY || document.documentElement.scrollTop || 0;
+    if (isStandalonePwaRuntime()) {
+      html.style.overflow = 'hidden';
+      body.style.overflow = 'hidden';
+      return;
+    }
     body.style.position = 'fixed';
     body.style.top = `-${lockedScrollY}px`;
     body.style.left = '0';
@@ -5076,14 +5104,10 @@ watch([deviceDialogVisible, mmDialogVisible, networkSettingsDialogVisible, wifiS
     body.style.height = 'auto'; // 覆盖 index.html 的 height:100%，否则 fixed 后超出一屏的内容会被裁掉
     body.style.overflow = 'hidden';
   } else {
-    body.style.position = '';
-    body.style.top = '';
-    body.style.left = '';
-    body.style.right = '';
-    body.style.width = '';
-    body.style.height = '';
-    body.style.overflow = '';
-    window.scrollTo(0, lockedScrollY);
+    resetDialogScrollLock();
+    if (!isStandalonePwaRuntime()) {
+      window.scrollTo(0, lockedScrollY);
+    }
   }
 });
 
@@ -5143,14 +5167,7 @@ onUnmounted(() => {
     mmGateClickTimer = null;
   }
   // 兜底还原（防止组件卸载时仍残留锁定样式）
-  const body = document.body;
-  body.style.position = '';
-  body.style.top = '';
-  body.style.left = '';
-  body.style.right = '';
-  body.style.width = '';
-  body.style.height = '';
-  body.style.overflow = '';
+  resetDialogScrollLock();
 });
 </script>
 
@@ -7985,7 +8002,7 @@ onUnmounted(() => {
   font-weight: 700;
   color: rgba(255, 255, 255, 0.92);
   display: flex;
-  margin-bottom: 0px;
+  margin-bottom: 5px;
   margin-top: 5px;
 }
 
@@ -8006,29 +8023,49 @@ onUnmounted(() => {
 
 .network-mode-row {
   gap: 12px;
+  align-items: flex-start;
 }
 
-.wireless-dialog .network-mode-row .net-select {
-  width: 96px;
-  margin-top: 0;
+.network-mode-options {
+  display: flex;
+  flex: 1 1 260px;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
 }
 
-.wireless-dialog .network-mode-row .net-select .el-select__wrapper {
-  width: 96px;
-  height: 26px;
-  min-height: 26px;
-  padding: 0 8px;
-  font-size: 12px;
+.network-mode-option {
+  min-height: 30px;
+  padding: 0 10px;
+  border: 1px solid rgba(125, 211, 252, 0.35);
   border-radius: 7px;
+  color: rgba(255, 255, 255, 0.82);
+  background: rgba(14, 165, 233, 0.14);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1;
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 0.16s ease, border-color 0.16s ease, color 0.16s ease, box-shadow 0.16s ease;
 }
 
-.wireless-dialog .network-mode-row .net-select .el-select__selected-item {
-  font-size: 12px;
+.network-mode-option.active {
+  border-color: rgba(74, 222, 128, 0.6);
+  color: #ffffff;
+  background: linear-gradient(135deg, rgba(34, 197, 94, 0.32), rgba(14, 165, 233, 0.2));
+  box-shadow: 0 6px 16px rgba(34, 197, 94, 0.18);
+}
+
+.network-mode-option:focus-visible {
+  outline: 2px solid rgba(125, 211, 252, 0.75);
+  outline-offset: 2px;
 }
 
 .wireless-dialog .network-mode-row .network-mode-apply {
-  width: 96px;
-  height: 26px;
+  flex: 0 0 auto;
+  min-width: 80px;
+  height: 30px;
   padding: 0 12px;
   border-radius: 7px;
   font-size: 12px;

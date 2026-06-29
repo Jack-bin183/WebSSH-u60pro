@@ -1,5 +1,5 @@
 <template>
-  <el-container>
+  <el-container class="home-shell">
     
           <el-header 
             v-show="!data.navCollapsed"
@@ -2866,6 +2866,10 @@ const terminalBackground = computed(() => {
 
 
 <style scoped>
+.home-shell {
+  min-height: 100dvh;
+}
+
 .top-nav-header {
   position: relative;
   height: fit-content;
@@ -2975,7 +2979,7 @@ const terminalBackground = computed(() => {
 
 .nav-anchor-toggle-closed {
   position: fixed;
-  top: var(--app-safe-top, 0px);
+  top: calc(var(--app-safe-top, 0px));
   z-index: 3001;
 }
 
