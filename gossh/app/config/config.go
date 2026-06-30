@@ -10,11 +10,6 @@ import (
 	"time"
 )
 
-const (
-	defaultDbFile = "webssh.db"
-	legacyDbFile  = "gowebssh.db"
-)
-
 type AppConfig struct {
 	WebBaseDir    string        `json:"web_base_dir"  toml:"web_base_dir"`
 	AppName       string        `json:"app_name"  toml:"app_name"`
@@ -52,7 +47,7 @@ var DefaultConfig = AppConfig{
 	WebBaseDir:    "",
 	AppName:       "GoWebSHH",
 	DbType:        "sqlite",
-	DbFile:        defaultDbFile,
+	DbFile:        "gowebssh.db",
 	IsInit:        false,
 	JwtSecret:     utils.RandString(64),
 	AesSecret:     utils.RandString(32),
@@ -93,7 +88,7 @@ func InitConfig() {
 	flag.StringVar(&configDir, "ConfigDir", "", "ConfigDir")
 	flag.StringVar(&webBaseDir, "WebBaseDir", "", "WebBaseDir")
 	flag.Parse()
-	DefaultConfig.WebBaseDir = webBaseDir
+	DefaultConfig.WebBaseDir = configDir
 	if configDir != "" {
 		WorkDir = path.Join(configDir, confPath)
 		confFileFullPath = path.Join(WorkDir, confFileName)
@@ -136,19 +131,15 @@ func InitConfig() {
 		return
 	}
 	if DefaultConfig.DbFile == "" {
-		if DefaultConfig.IsInit {
-			DefaultConfig.DbFile = legacyDbFile
-		} else {
-			DefaultConfig.DbFile = defaultDbFile
-		}
-		if _, err := os.Stat(path.Join(WorkDir, legacyDbFile)); err == nil {
-			DefaultConfig.DbFile = legacyDbFile
-		}
+		DefaultConfig.DbFile = "gowebssh.db"
 	}
 
 	// 修正webBaseDir
 	if DefaultConfig.WebBaseDir != webBaseDir {
 		DefaultConfig.WebBaseDir = webBaseDir
+		if err := DefaultConfig.write(); err != nil {
+			return
+		}
 	}
 	slog.Debug("DefaultConfig:", "data", DefaultConfig)
 

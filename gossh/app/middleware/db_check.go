@@ -12,22 +12,17 @@ func DbCheck() gin.HandlerFunc {
 			c.Next()
 			return
 		}
-		if model.Db == nil {
-			if err := model.DbMigrate(config.DefaultConfig.DbType, config.DefaultConfig.DbFile); err != nil {
-				c.Abort()
-				c.JSON(500, gin.H{"code": 500, "msg": "数据库连接错误:" + err.Error()})
-				return
-			}
-			c.Next()
-			return
-		}
-
-		tx := model.Db.Exec("select 1=1")
-		if tx.Error != nil {
-			if err := model.DbMigrate(config.DefaultConfig.DbType, config.DefaultConfig.DbFile); err != nil {
-				c.Abort()
-				c.JSON(500, gin.H{"code": 500, "msg": "数据库连接错误:" + err.Error()})
-				return
+		if model.Db != nil {
+			tx := model.Db.Exec("select 1=1")
+			if tx.Error == nil {
+				c.Next()
+			} else {
+				err := model.DbMigrate(config.DefaultConfig.DbType, config.DefaultConfig.DbFile)
+				if err != nil {
+					c.Abort()
+					c.JSON(500, gin.H{"code": 500, "msg": "数据库连接错误:" + err.Error()})
+					return
+				}
 			}
 		}
 		c.Next()
