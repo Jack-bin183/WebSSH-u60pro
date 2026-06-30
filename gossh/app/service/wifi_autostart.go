@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"gossh/app/config"
 	"gossh/app/model"
 	"gossh/gorm"
 	"log/slog"
@@ -22,7 +23,17 @@ const (
 // The wireless UCI settings such as country and txpower persist naturally; the
 // radio link state and power-save mode are runtime state and need replay.
 func InitWifiSettingsAutostart() {
+	if !config.DefaultConfig.IsInit {
+		return
+	}
+
 	go func() {
+		defer func() {
+			if err := recover(); err != nil {
+				slog.Error("wifi settings autostart recovered", "err", err)
+			}
+		}()
+
 		time.Sleep(wifiSettingsAutostartInitialDelay)
 
 		settings, ok, err := loadLatestPersistedDeviceSettings()
@@ -50,6 +61,10 @@ func InitWifiSettingsAutostart() {
 }
 
 func loadLatestPersistedDeviceSettings() (PersistedDeviceSettings, bool, error) {
+	if !config.DefaultConfig.IsInit || model.Db == nil {
+		return PersistedDeviceSettings{}, false, nil
+	}
+
 	var s model.UserSetting
 	setting, err := s.FindLatestNonEmpty()
 	if err != nil {
@@ -132,6 +147,12 @@ func applyPersistedWifiRuntimeSettings(settings PersistedDeviceSettings) error {
 }
 
 func pollPersistedWifiState() {
+	defer func() {
+		if err := recover(); err != nil {
+			slog.Error("wifi state poll recovered", "err", err)
+		}
+	}()
+
 	ticker := time.NewTicker(wifiSettingsStatePollInterval)
 	defer ticker.Stop()
 

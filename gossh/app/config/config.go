@@ -47,7 +47,7 @@ var DefaultConfig = AppConfig{
 	WebBaseDir:    "",
 	AppName:       "GoWebSHH",
 	DbType:        "sqlite",
-	DbFile:        "gowebssh.db",
+	DbFile:        "webssh.db",
 	IsInit:        false,
 	JwtSecret:     utils.RandString(64),
 	AesSecret:     utils.RandString(32),
@@ -131,7 +131,7 @@ func InitConfig() {
 		return
 	}
 	if DefaultConfig.DbFile == "" {
-		DefaultConfig.DbFile = "gowebssh.db"
+		DefaultConfig.DbFile = "webssh.db"
 	}
 
 	// 修正webBaseDir
