@@ -80,7 +80,7 @@
               <span class="quick-action-title">网络设置</span>
               <span class="quick-action-subtitle">{{ networkSettingsSummary }}</span>
             </span>
-            <span v-if="networkLockTags.length" class="network-lock-tags" aria-label="网络锁定状态">
+            <span v-if="networkLockTags.length" class="network-lock-tags" aria-label="网络状态标签">
               <span
                 v-for="tag in networkLockTags"
                 :key="tag"
@@ -1307,6 +1307,20 @@
     :close-on-click-modal="true"
     class="wireless-dialog">
     <div class="settings-panel">
+      <section class="settings-section network-airplane-section">
+        <div class="network-airplane-copy">
+          <div class="settings-section-title">飞行模式</div>
+        </div>
+        <div class="network-airplane-control">
+          <el-switch
+            :model-value="airplaneMode.enabled"
+            :loading="airplaneMode.loading || networkApplying === 'airplane'"
+            active-text="开"
+            inactive-text="关"
+            @change="(val: string | number | boolean) => setAirplaneMode(Boolean(val))" />
+        </div>
+      </section>
+
       <section class="settings-section">
         <div class="settings-section-title">网络制式</div>
         <div class="settings-inline network-mode-row">
@@ -2235,7 +2249,7 @@ const wifiTxPowerOptions = [
   { value: 100, label: '远距离' },
 ];
 
-type NetworkApplyTarget = '' | 'mode' | 'lteBand' | 'nrBand' | 'lteCell' | 'nrCell';
+type NetworkApplyTarget = '' | 'airplane' | 'mode' | 'lteBand' | 'nrBand' | 'lteCell' | 'nrCell';
 type WifiApplyTarget = '' | 'radio24' | 'radio5' | 'psm' | 'txpower' | 'country' | 'settings' | 'all';
 
 interface DeviceSettings {
@@ -2266,6 +2280,12 @@ const networkForm = reactive({
   lock_nr_band: '',
 });
 
+const airplaneMode = reactive({
+  enabled: false,
+  loading: false,
+  status: '',
+});
+
 const wifiForm = reactive({
   high_performance: false,
   wifi24_enabled: false,
@@ -2280,6 +2300,7 @@ function normalizeWifiTxPower(value: unknown): number {
 }
 
 const networkSettingsSummary = computed(() => {
+  if (airplaneMode.enabled) return '飞行模式';
   const opt = netSelectOptions.find(item => item.value === (networkForm.net_select || d.value?.net_select));
   return opt?.label || '点击配置';
 });
@@ -2292,6 +2313,7 @@ const hasNRCellLock = computed(() => isCellLockActive(d.value?.lock_nr_cell));
 const hasCellLock = computed(() => hasLTECellLock.value || hasNRCellLock.value);
 const networkLockTags = computed(() => {
   const tags: string[] = [];
+  if (airplaneMode.enabled) tags.push('飞行模式');
   if (hasBandLock.value) tags.push('锁频');
   if (hasCellLock.value) tags.push('锁小区');
   return tags;
@@ -3340,6 +3362,22 @@ const usbStatusRequest = {
   ],
 };
 
+const airplaneModeRequest = {
+  jsonrpc: '2.0',
+  id: 17,
+  method: 'call',
+  params: [
+    SESSION_ID,
+    'uci',
+    'get',
+    {
+      config: 'zte_nwinfo',
+      section: 'sys_info',
+      option: 'operate_mode',
+    },
+  ],
+};
+
 // 1.网络信息 => netInfoRequest
 // 2.LAN 状态 => lanRequest
 // 3.WAN IPv4 => wanRequest
@@ -3366,6 +3404,7 @@ const batchRequests = [
   usbStatusRequest,
   wwanRequest,
   lanUserListRequest,
+  airplaneModeRequest,
 ]
 
 
@@ -3652,6 +3691,7 @@ async function openNetworkSettingsDialog() {
   await fetchAllData();
   syncNetworkFormFromCurrent();
   networkSettingsDialogVisible.value = true;
+  loadAirplaneMode();
 }
 
 function openWifiSettingsDialog() {
@@ -3685,6 +3725,59 @@ async function applyNetworkMode() {
   } catch (err: any) {
     console.error('模式切换失败', err);
     ElMessage.error(err.message || '模式切换失败');
+  } finally {
+    networkApplying.value = '';
+  }
+}
+
+function applyAirplaneModeValue(value: unknown) {
+  const mode = String(value || '').toUpperCase();
+  airplaneMode.enabled = mode === 'OFFLINE' || mode === 'LOW_POWER' || mode === '0';
+  airplaneMode.status = mode ? `operate_mode=${mode}` : '';
+}
+
+async function loadAirplaneMode() {
+  airplaneMode.loading = true;
+  try {
+    const resultMap = await callUbusBatch([{
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'call',
+      params: [SESSION_ID, 'uci', 'get', {
+        config: 'zte_nwinfo',
+        section: 'sys_info',
+        option: 'operate_mode',
+      }],
+    }]);
+    applyAirplaneModeValue(resultMap[1]?.value);
+  } catch (err: any) {
+    airplaneMode.status = '读取飞行模式状态失败: ' + (err?.message ?? err);
+  } finally {
+    airplaneMode.loading = false;
+  }
+}
+
+async function setAirplaneMode(enabled: boolean) {
+  const previous = airplaneMode.enabled;
+  airplaneMode.enabled = enabled;
+  networkApplying.value = 'airplane';
+  airplaneMode.status = enabled ? '正在开启飞行模式...' : '正在关闭飞行模式...';
+  try {
+    await callUbusBatch([{
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'call',
+      params: [SESSION_ID, 'zte_nwinfo_api', 'nwinfo_set_mode', {
+        operate_mode: enabled ? '0' : '1',
+      }],
+    }]);
+    applyAirplaneModeValue(enabled ? 'OFFLINE' : 'ONLINE');
+    ElMessage.success(enabled ? '飞行模式已开启' : '飞行模式已关闭');
+    setTimeout(fetchAllData, enabled ? 1000 : 3000);
+  } catch (err: any) {
+    airplaneMode.enabled = previous;
+    airplaneMode.status = err.message || '飞行模式切换失败';
+    ElMessage.error(airplaneMode.status);
   } finally {
     networkApplying.value = '';
   }
@@ -4283,6 +4376,7 @@ async function fetchAllData() {
     wifiStatus.value = resultMap[14]
     sysVersion.value = resultMap[15]?.values ?? sysVersion.value
     usbStatus.value = resultMap[16] ?? usbStatus.value
+    if (resultMap[17]) applyAirplaneModeValue(resultMap[17].value)
     connectionOk.value = true
   } catch (e: any) {
     connectionOk.value = false
@@ -8141,6 +8235,30 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 10px;
+  flex-wrap: wrap;
+}
+
+.network-airplane-section {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.network-airplane-copy {
+  min-width: 0;
+}
+
+.network-airplane-section .settings-section-title {
+  margin: 0;
+}
+
+.network-airplane-control {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex: 0 0 auto;
   flex-wrap: wrap;
 }
 
