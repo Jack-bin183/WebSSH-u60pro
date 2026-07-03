@@ -70,11 +70,22 @@
             </span>
           </button>
 
-          <button class="quick-action-button" @click="openNetworkSettingsDialog">
+          <button
+            class="quick-action-button network-action-button"
+            :class="{ active: networkLockTags.length > 0 }"
+            @click="openNetworkSettingsDialog"
+          >
             <span class="quick-action-icon">Net</span>
             <span class="quick-action-copy">
               <span class="quick-action-title">网络设置</span>
               <span class="quick-action-subtitle">{{ networkSettingsSummary }}</span>
+            </span>
+            <span v-if="networkLockTags.length" class="network-lock-tags" aria-label="网络锁定状态">
+              <span
+                v-for="tag in networkLockTags"
+                :key="tag"
+                class="network-lock-tag"
+              >{{ tag }}</span>
             </span>
           </button>
 
@@ -2273,6 +2284,19 @@ const networkSettingsSummary = computed(() => {
   return opt?.label || '点击配置';
 });
 
+const hasLTEBandLock = computed(() => isPartialBandLockActive(d.value?.lte_band, lteBandOptions));
+const hasNRBandLock = computed(() => isPartialBandLockActive(currentNRBandLockValue(), nrBandOptions));
+const hasBandLock = computed(() => hasLTEBandLock.value || hasNRBandLock.value);
+const hasLTECellLock = computed(() => isCellLockActive(d.value?.lock_lte_cell));
+const hasNRCellLock = computed(() => isCellLockActive(d.value?.lock_nr_cell));
+const hasCellLock = computed(() => hasLTECellLock.value || hasNRCellLock.value);
+const networkLockTags = computed(() => {
+  const tags: string[] = [];
+  if (hasBandLock.value) tags.push('锁频');
+  if (hasCellLock.value) tags.push('锁小区');
+  return tags;
+});
+
 const wifiSettingsSummary = computed(() => {
   return wifiSettingsSaving.value ? '应用中...' : `${wifiInfo.value.wifiStatus24 ? '2.4G开' : '2.4G关'} / ${wifiInfo.value.wifiStatus5 ? '5G开' : '5G关'}`;
 });
@@ -3683,6 +3707,11 @@ function parseBandList(raw: unknown, allowed: number[]): number[] {
     .filter(band => Number.isFinite(band) && allowed.includes(band)))];
 }
 
+function isPartialBandLockActive(raw: unknown, allowed: number[]): boolean {
+  const bands = parseBandList(raw, allowed);
+  return bands.length > 0 && bands.length < allowed.length;
+}
+
 function currentNRBandLockValue(): unknown {
   const type = String(d.value?.network_type || '').toUpperCase();
   if (type === 'NSA') return d.value?.nr5g_nsa_band_lock;
@@ -3792,6 +3821,10 @@ function syncNRCellLockFromCurrent() {
 function parseCellLockValue(raw: unknown): string[] {
   if (!raw || typeof raw !== 'string') return [];
   return raw.match(/\d+/g) || [];
+}
+
+function isCellLockActive(raw: unknown): boolean {
+  return parseCellLockValue(raw).some(value => Number(value) > 0);
 }
 
 function clearLTECell() {
@@ -5299,6 +5332,46 @@ onUnmounted(() => {
   border-color: rgba(74, 222, 128, 0.45);
   background: linear-gradient(135deg, rgba(34, 197, 94, 0.26), rgba(14, 165, 233, 0.18));
   box-shadow: 0 6px 18px rgba(34, 197, 94, 0.18);
+}
+
+.network-action-button {
+  position: relative;
+  padding-right: 34px;
+}
+
+.network-action-button.active {
+  border-color: rgba(248, 113, 113, 0.5);
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.24), rgba(14, 165, 233, 0.18));
+  box-shadow: 0 6px 18px rgba(239, 68, 68, 0.18);
+}
+
+.network-lock-tags {
+  position: absolute;
+  top: -7px;
+  right: -7px;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  pointer-events: none;
+}
+
+.network-lock-tag {
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  border-radius: 999px;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  background: #ef4444;
+  box-shadow: 0 5px 12px rgba(127, 29, 29, 0.34);
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1;
+  white-space: nowrap;
 }
 
 .adb-action-button.active {
