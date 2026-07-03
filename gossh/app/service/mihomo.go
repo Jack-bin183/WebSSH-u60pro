@@ -1,10 +1,12 @@
 package service
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"fmt"
 	"gossh/gin"
+	"gossh/gin/sse"
 	"io"
 	"log/slog"
 	"net"
@@ -860,6 +862,67 @@ func runMihomoMmSh(dir string, action string) (string, error) {
 	return string(out), err
 }
 
+func isValidMihomoControlAction(action string) bool {
+	validActions := map[string]bool{
+		"start": true, "stop": true, "restart": true, "reload-ipset": true,
+	}
+	return validActions[action]
+}
+
+func streamMihomoMmSh(ctx context.Context, dir string, action string, onLine func(string)) (string, error) {
+	mmScript := filepath.Join(dir, "mm.sh")
+	if _, err := os.Stat(mmScript); err != nil {
+		return "", fmt.Errorf("mm.sh 不存在: %s", mmScript)
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "/bin/sh", mmScript, action)
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return "", err
+	}
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		return "", err
+	}
+	if err := cmd.Start(); err != nil {
+		return "", err
+	}
+
+	lines := make(chan string, 32)
+	var wg sync.WaitGroup
+	scan := func(r io.Reader) {
+		defer wg.Done()
+		scanner := bufio.NewScanner(r)
+		scanner.Buffer(make([]byte, 0, 4096), 1024*1024)
+		for scanner.Scan() {
+			lines <- scanner.Text()
+		}
+	}
+	wg.Add(2)
+	go scan(stdout)
+	go scan(stderr)
+	go func() {
+		wg.Wait()
+		close(lines)
+	}()
+
+	var output strings.Builder
+	for line := range lines {
+		output.WriteString(line)
+		output.WriteByte('\n')
+		onLine(line)
+	}
+
+	err = cmd.Wait()
+	if ctx.Err() == context.DeadlineExceeded {
+		err = fmt.Errorf("执行超时")
+	}
+	return output.String(), err
+}
+
 // ─────────────────────────── Handlers: 状态 & 控制 ───────────────────────────
 
 // MihomoStatusHandler GET /api/mihomo/status
@@ -943,10 +1006,7 @@ func MihomoControlHandler(c *gin.Context) {
 		c.JSON(200, gin.H{"code": 1, "msg": "参数错误: " + err.Error()})
 		return
 	}
-	validActions := map[string]bool{
-		"start": true, "stop": true, "restart": true, "reload-ipset": true,
-	}
-	if !validActions[req.Action] {
+	if !isValidMihomoControlAction(req.Action) {
 		c.JSON(200, gin.H{"code": 1, "msg": "无效操作: " + req.Action})
 		return
 	}
@@ -968,6 +1028,51 @@ func MihomoControlHandler(c *gin.Context) {
 		return
 	}
 	c.JSON(200, gin.H{"code": 0, "msg": "ok", "action": req.Action, "output": out})
+}
+
+// MihomoControlStreamHandler GET /api/mihomo/control/stream?action=start
+func MihomoControlStreamHandler(c *gin.Context) {
+	action := c.Query("action")
+	send := func(event string, data gin.H) {
+		c.Render(200, sse.Event{
+			Event: event,
+			Data:  data,
+		})
+		c.Writer.(http.Flusher).Flush()
+	}
+
+	c.Header("Access-Control-Allow-Origin", "*")
+	c.Header("Connection", "keep-alive")
+	c.Header("Cache-Control", "no-cache")
+	c.Header("Content-Type", "text/event-stream")
+	c.Writer.(http.Flusher).Flush()
+
+	if !isValidMihomoControlAction(action) {
+		send("done", gin.H{"code": 1, "msg": "无效操作: " + action, "action": action})
+		return
+	}
+	if action == "start" || action == "restart" {
+		if missing := mihomoPreflightCheck(getMihomoDir()); len(missing) > 0 {
+			send("done", gin.H{
+				"code":    2,
+				"msg":     "前置条件未满足，缺少：" + strings.Join(missing, "、"),
+				"action":  action,
+				"missing": missing,
+			})
+			return
+		}
+	}
+
+	slog.Info("[mihomo] 流式执行控制命令", "action", action)
+	out, err := streamMihomoMmSh(c.Request.Context(), getMihomoDir(), action, func(line string) {
+		send("line", gin.H{"line": line})
+	})
+	if err != nil {
+		slog.Warn("[mihomo] 流式控制命令非 0", "action", action, "err", err.Error())
+		send("done", gin.H{"code": 1, "msg": "执行失败: " + err.Error(), "action": action, "output": out})
+		return
+	}
+	send("done", gin.H{"code": 0, "msg": "ok", "action": action, "output": out})
 }
 
 // MihomoGetDirHandler GET /api/mihomo/dir

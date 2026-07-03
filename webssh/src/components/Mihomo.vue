@@ -30,7 +30,7 @@
       <!-- 控制命令输出 -->
       <el-collapse-transition>
         <div v-if="controlOutput" style="margin-top: 12px">
-          <pre class="output-box">{{ controlOutput }}</pre>
+          <pre ref="controlOutputEl" class="output-box">{{ controlOutput }}</pre>
         </div>
       </el-collapse-transition>
     </el-card>
@@ -112,7 +112,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
+import { ref, reactive, computed, nextTick, onMounted, onUnmounted } from 'vue'
 import axios from 'axios'
 import { ElMessage } from 'element-plus'
 import { Refresh } from '@element-plus/icons-vue'
@@ -188,9 +188,11 @@ const updateStatus = reactive<UpdateStatus>({
 const loadingStatus = ref(false)
 const controlling = ref('')
 const controlOutput = ref('')
+const controlOutputEl = ref<HTMLElement | null>(null)
 const checkingVersion = ref(false)
 
 let pollTimer: ReturnType<typeof setInterval> | null = null
+let controlSource: EventSource | null = null
 
 // ─── 计算属性 ───
 
@@ -232,22 +234,61 @@ async function loadStatus() {
 }
 
 async function control(action: string) {
+  stopControlStream()
   controlling.value = action
-  controlOutput.value = ''
-  try {
-    const res = await axios.post('/api/mihomo/control', { action })
-    if (res.data.code === 0) {
+  controlOutput.value = '正在执行...\n'
+  const params = new URLSearchParams({
+    action,
+    Authorization: localStorage.getItem('token') ?? '',
+  })
+  controlSource = new EventSource(`/api/mihomo/control/stream?${params.toString()}`)
+
+  controlSource.addEventListener('line', (event: MessageEvent) => {
+    const data = JSON.parse(event.data)
+    controlOutput.value += `${data.line}\n`
+    scrollControlOutputToBottom()
+  })
+
+  controlSource.addEventListener('done', async (event: MessageEvent) => {
+    const data = JSON.parse(event.data)
+    controlling.value = ''
+    stopControlStream()
+    controlOutput.value = controlOutput.value.trim()
+    if (data.code === 0) {
       ElMessage.success(`${action} 执行成功`)
-      controlOutput.value = res.data.output ?? ''
     } else {
-      ElMessage.error(res.data.msg)
-      controlOutput.value = res.data.output ?? res.data.msg
+      ElMessage.error(data.msg ?? '执行失败')
+      if (!controlOutput.value && data.output) {
+        controlOutput.value = data.output
+      } else if (data.msg && !controlOutput.value.includes(data.msg)) {
+        controlOutput.value += `\n${data.msg}`
+        scrollControlOutputToBottom()
+      }
     }
     await loadStatus()
-  } catch (e: any) {
-    ElMessage.error('请求失败: ' + (e.message ?? e))
-  } finally {
-    controlling.value = ''
+  })
+
+  controlSource.onerror = async () => {
+    stopControlStream()
+    if (controlling.value) {
+      ElMessage.error('实时日志连接中断')
+      await loadStatus()
+      controlling.value = ''
+    }
+  }
+}
+
+function stopControlStream() {
+  if (controlSource) {
+    controlSource.close()
+    controlSource = null
+  }
+}
+
+async function scrollControlOutputToBottom() {
+  await nextTick()
+  if (controlOutputEl.value) {
+    controlOutputEl.value.scrollTop = controlOutputEl.value.scrollHeight
   }
 }
 
@@ -355,6 +396,7 @@ onMounted(async () => {
 
 onUnmounted(() => {
   stopPollUpdate()
+  stopControlStream()
 })
 </script>
 

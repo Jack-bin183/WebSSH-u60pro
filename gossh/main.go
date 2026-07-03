@@ -1172,6 +1172,7 @@ func main() {
 		auth.GET("/api/mihomo/status", service.MihomoStatusHandler)
 		auth.GET("/api/mihomo/dir", service.MihomoGetDirHandler)
 		auth.POST("/api/mihomo/control", service.MihomoControlHandler)
+		auth.GET("/api/mihomo/control/stream", service.MihomoControlStreamHandler)
 		auth.GET("/api/mihomo/data/version", service.MihomoDataVersionHandler)
 		auth.POST("/api/mihomo/data/update", service.MihomoDataUpdateHandler)
 		auth.GET("/api/mihomo/data/update/status", service.MihomoDataUpdateStatusHandler)

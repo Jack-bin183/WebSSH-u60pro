@@ -1144,7 +1144,7 @@
           <el-button :icon="RefreshIcon" @click="loadMmStatus" :loading="mmLoadingStatus">刷新</el-button>
         </div>
         <transition name="el-fade-in">
-          <pre v-if="mmControlOutput" class="mh-output">{{ mmControlOutput }}</pre>
+          <pre v-if="mmControlOutput" ref="mmControlOutputEl" class="mh-output">{{ mmControlOutput }}</pre>
         </transition>
 
         <!-- 开机自启 -->
@@ -1875,7 +1875,7 @@ import NetworkIcon from '@/assets/svgs/network.svg';
 import { Refresh as RefreshIcon } from '@element-plus/icons-vue';
 import axios from 'axios';
 import { ElMessage, ElMessageBox, ElNotification } from 'element-plus';
-import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 
 // interface UbusResponse<T = any> {
 //   code: number;
@@ -4374,6 +4374,7 @@ const mmActiveTab = ref('overview')
 const mmLoadingStatus = ref(false)
 const mmControlling = ref('')
 const mmControlOutput = ref('')
+const mmControlOutputEl = ref<HTMLElement | null>(null)
 const mmCheckingVersion = ref(false)
 const mmBinaryChecking = ref(false)
 const mmConfigLoading = ref(false)
@@ -4386,6 +4387,7 @@ const mmUninstalling = ref('')
 const mmAutostartChanging = ref(false)
 const mmEntryUnlocked = ref(false)
 let mmUpdatePollTimer: ReturnType<typeof setInterval> | null = null
+let mmControlSource: EventSource | null = null
 let mmInstallPollTimer: ReturnType<typeof setInterval> | null = null
 let mmGateClickCount = 0
 let mmGateClickTimer: ReturnType<typeof setTimeout> | null = null
@@ -4531,22 +4533,61 @@ watch(mmActiveTab, (tab) => {
 })
 
 async function mmControl(action: string) {
+  stopMmControlStream()
   mmControlling.value = action
-  mmControlOutput.value = ''
-  try {
-    const res = await axios.post('/api/mihomo/control', { action })
-    if (res.data.code === 0) {
+  mmControlOutput.value = '正在执行...\n'
+  const params = new URLSearchParams({
+    action,
+    Authorization: localStorage.getItem('token') ?? '',
+  })
+  mmControlSource = new EventSource(`/api/mihomo/control/stream?${params.toString()}`)
+
+  mmControlSource.addEventListener('line', (event: MessageEvent) => {
+    const data = JSON.parse(event.data)
+    mmControlOutput.value += `${data.line}\n`
+    scrollMmControlOutputToBottom()
+  })
+
+  mmControlSource.addEventListener('done', async (event: MessageEvent) => {
+    const data = JSON.parse(event.data)
+    mmControlling.value = ''
+    stopMmControlStream()
+    mmControlOutput.value = mmControlOutput.value.trim()
+    if (data.code === 0) {
       ElMessage.success(action + ' 成功')
-      mmControlOutput.value = (res.data.output ?? '').trim()
     } else {
-      ElMessage.error(res.data.msg)
-      mmControlOutput.value = (res.data.output ?? res.data.msg ?? '').trim()
+      ElMessage.error(data.msg ?? '执行失败')
+      if (!mmControlOutput.value && data.output) {
+        mmControlOutput.value = data.output
+      } else if (data.msg && !mmControlOutput.value.includes(data.msg)) {
+        mmControlOutput.value += `\n${data.msg}`
+        scrollMmControlOutputToBottom()
+      }
     }
     await loadMmStatus()
-  } catch (e: any) {
-    ElMessage.error('请求失败: ' + (e.message ?? e))
-  } finally {
-    mmControlling.value = ''
+  })
+
+  mmControlSource.onerror = async () => {
+    stopMmControlStream()
+    if (mmControlling.value) {
+      ElMessage.error('实时日志连接中断')
+      await loadMmStatus()
+      mmControlling.value = ''
+    }
+  }
+}
+
+function stopMmControlStream() {
+  if (mmControlSource) {
+    mmControlSource.close()
+    mmControlSource = null
+  }
+}
+
+async function scrollMmControlOutputToBottom() {
+  await nextTick()
+  if (mmControlOutputEl.value) {
+    mmControlOutputEl.value.scrollTop = mmControlOutputEl.value.scrollHeight
   }
 }
 
@@ -5148,6 +5189,10 @@ watch(deviceDialogVisible, (open) => {
   if (!open) stopDeviceRfRefresh();
 });
 
+watch(mmDialogVisible, (open) => {
+  if (!open) stopMmControlStream();
+});
+
 watch(systemToolsActiveTab, (tab) => {
   if (!systemToolsDialogVisible.value) return;
   if (tab === 'sms') {
@@ -5192,6 +5237,7 @@ onUnmounted(() => {
     URL.revokeObjectURL(devui.uploadWallpaperPreview);
   }
   stopMmAllPolls();
+  stopMmControlStream();
   stopLocalSpeedTest();
   stopDeviceRfRefresh();
   if (mmGateClickTimer) {

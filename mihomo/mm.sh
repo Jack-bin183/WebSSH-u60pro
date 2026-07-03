@@ -62,6 +62,11 @@ ip6t_filter() {
     ip6tables -t filter "$@"
 }
 
+ip6t_nat() {
+    ip6tables -t nat "$@"
+}
+
+
 # -------------------------
 # load cn ipset
 # -------------------------
@@ -149,6 +154,10 @@ clean_rules() {
     while ipt_nat -D PREROUTING -i "$LAN_IF" -p udp --dport 53 -j REDIRECT --to-ports "$DNS_PORT" 2>/dev/null; do :; done
     while ipt_nat -D PREROUTING -i "$LAN_IF" -p tcp --dport 53 -j REDIRECT --to-ports "$DNS_PORT" 2>/dev/null; do :; done
 
+    # IPv6 DNS hijack
+    while ip6t_nat -D PREROUTING -i "$LAN_IF" -p udp --dport 53 -j REDIRECT --to-ports "$DNS_PORT" 2>/dev/null; do :; done
+    while ip6t_nat -D PREROUTING -i "$LAN_IF" -p tcp --dport 53 -j REDIRECT --to-ports "$DNS_PORT" 2>/dev/null; do :; done
+
     # UDP mark
     while ipt_mangle -D PREROUTING -i "$LAN_IF" -p udp -j "$UDP_CHAIN" 2>/dev/null; do :; done
     ipt_mangle -F "$UDP_CHAIN" 2>/dev/null
@@ -210,6 +219,15 @@ add_rules() {
 
     ipt_nat -A PREROUTING -i "$LAN_IF" -p udp --dport 53 -j REDIRECT --to-ports "$DNS_PORT"
     ipt_nat -A PREROUTING -i "$LAN_IF" -p tcp --dport 53 -j REDIRECT --to-ports "$DNS_PORT"
+
+    log "添加 IPv6 DNS 劫持规则..."
+
+    while ip6t_nat -D PREROUTING -i "$LAN_IF" -p udp --dport 53 -j REDIRECT --to-ports "$DNS_PORT" 2>/dev/null; do :; done
+    while ip6t_nat -D PREROUTING -i "$LAN_IF" -p tcp --dport 53 -j REDIRECT --to-ports "$DNS_PORT" 2>/dev/null; do :; done
+
+    # 用 -I 插到最前，避免被固件自带 second_auth/redirect/remote_manager 链提前处理
+    ip6t_nat -I PREROUTING 1 -i "$LAN_IF" -p udp --dport 53 -j REDIRECT --to-ports "$DNS_PORT"
+    ip6t_nat -I PREROUTING 1 -i "$LAN_IF" -p tcp --dport 53 -j REDIRECT --to-ports "$DNS_PORT"
 
     log "添加 UDP -> TUN 规则..."
 
@@ -430,6 +448,10 @@ status_mihomo() {
     echo
     echo "=== forward ==="
     iptables -L FORWARD -n -v | grep -E "$LAN_IF|$TUN_IF|DROP|REJECT"
+
+    echo
+    echo "=== ipv6 nat dns hijack ==="
+    ip6tables -t nat -L PREROUTING -n -v --line-numbers 2>/dev/null | grep -E "1053|Chain|num"
 
     echo
     echo "=== ipv6 guard chain ==="

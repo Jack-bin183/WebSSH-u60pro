@@ -118,17 +118,34 @@
 
                   <!-- admin 角色才能管理 -->
                   <el-button v-if="globalStore.isAdmin === 'Y'" type="danger" :icon="Tools" @click="toManage"></el-button>
-                  <el-popconfirm 
+                  <el-popover
+                    v-model:visible="devicePowerPopoverVisible"
                     placement="bottom-end"
-                    confirmButtonText="重启" 
-                    cancelButtonText="取消" 
-                    icon="el-icon-info"
-                    title="确定重启设备吗？"
-                    @confirm="rebootDevice">
+                    trigger="click"
+                    width="220">
+                    <div class="device-power-pop">
+                      <div class="device-power-title">选择电源操作</div>
+                      <div class="device-power-desc">选择后设备会立即执行。</div>
+                      <div class="device-power-actions">
+                        <el-button size="small" @click="devicePowerPopoverVisible = false">取消</el-button>
+                        <el-button
+                          size="small"
+                          type="warning"
+                          :loading="devicePowerAction === 'reboot'"
+                          :disabled="devicePowerAction !== ''"
+                          @click="sendDevicePowerCommand('reboot')">重启</el-button>
+                        <el-button
+                          size="small"
+                          type="danger"
+                          :loading="devicePowerAction === 'poweroff'"
+                          :disabled="devicePowerAction !== ''"
+                          @click="sendDevicePowerCommand('poweroff')">关机</el-button>
+                      </div>
+                    </div>
                     <template #reference>
                       <el-button :icon="SwitchButton" type="danger"></el-button>
                     </template>
-                  </el-popconfirm>
+                  </el-popover>
                 </el-button-group>
               </div>
             </div>
@@ -1091,6 +1108,9 @@ const chkingUpdate = ref(false);
 const updateProgressDialogVisible = ref(false);
 const updateConfirmDialogVisible = ref(false);
 const cancelingUpdate = ref(false);
+type DevicePowerAction = "" | "reboot" | "poweroff";
+const devicePowerPopoverVisible = ref(false);
+const devicePowerAction = ref<DevicePowerAction>("");
 const updateProxyMode = ref<"auto" | "builtin" | "custom">("auto");
 const updateSelectedProxy = ref("");
 const updateCustomProxy = ref("");
@@ -2807,7 +2827,12 @@ function logout() {
   router.replace({ name: "Login" });
 }
 
-function rebootDevice() {
+function sendDevicePowerCommand(action: Exclude<DevicePowerAction, "">) {
+  const isPoweroff = action === "poweroff";
+  const method = isPoweroff ? "device_poweroff" : "device_reboot";
+  const label = isPoweroff ? "关机" : "重启";
+
+  devicePowerAction.value = action;
   axios.post<ZteRpcResponse[]>("/api/ubus", [{
     jsonrpc: "2.0",
     id: 1,
@@ -2815,20 +2840,23 @@ function rebootDevice() {
     params: [
       "00000000000000000000000000000000",
       "zwrt_mc.device.manager",
-      "device_reboot",
+      method,
       { moduleName: "web" },
     ],
   }]).then((ret) => {
     const item = ret.data?.[0];
     const [code, msg] = item?.result || [1, "接口返回异常"];
     if (code === 0) {
-      ElMessage.success("设备重启命令已发送");
+      ElMessage.success(`设备${label}命令已发送`);
+      devicePowerPopoverVisible.value = false;
     } else {
-      ElMessage.error(typeof msg === "string" ? msg : "设备重启失败");
+      ElMessage.error(typeof msg === "string" ? msg : `设备${label}失败`);
     }
   }).catch((err) => {
     console.log(err);
-    ElMessage.error("设备重启请求失败");
+    ElMessage.error(`设备${label}请求失败`);
+  }).finally(() => {
+    devicePowerAction.value = "";
   });
 }
 
@@ -3412,6 +3440,34 @@ const terminalBackground = computed(() => {
   color: #606266;
   font-size: 14px;
   text-align: center;
+}
+
+.device-power-pop {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.device-power-title {
+  color: #303133;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.device-power-desc {
+  color: #606266;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.device-power-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.device-power-actions :deep(.el-button) {
+  margin-left: 0;
 }
 
 .mobile-table-wrap {
