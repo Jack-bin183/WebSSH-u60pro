@@ -1758,6 +1758,39 @@
         </div>
       </el-tab-pane>
 
+      <el-tab-pane label="串号更新" name="serialUpdate">
+        <div class="system-tool-panel">
+          <div class="system-tool-header">
+            <div>
+              <div class="settings-section-title">串号更新</div>
+              <div class="system-tool-hint">写入 /nvefs/nvconfig.ini，成功后需要重启设备才会生效。</div>
+            </div>
+            <el-tag type="warning" effect="dark">需重启</el-tag>
+          </div>
+          <div class="devui-status-grid serial-update-status-grid">
+            <div><span>当前 IMEI</span><strong>{{ simInfo?.values?.imei || '-' }}</strong></div>
+            <div><span>目标路径</span><strong>/nvefs/nvconfig.ini</strong></div>
+            <div><span>写入方式</span><strong>libdiag EFS</strong></div>
+          </div>
+          <section class="system-tool-section">
+            <div class="system-tool-section-title">新串号</div>
+            <el-input
+              v-model="serialUpdate.digits"
+              maxlength="15"
+              show-word-limit
+              inputmode="numeric"
+              placeholder="请输入 15 位数字"
+              clearable />
+            <div class="sms-forward-hint">只接受 15 位数字；写入前会生成固定格式的 nvconfig.ini，不做读回校验。</div>
+          </section>
+          <section v-if="serialUpdatePreview" class="system-tool-section">
+            <div class="system-tool-section-title">写入预览</div>
+            <pre class="serial-update-preview">{{ serialUpdatePreview }}</pre>
+          </section>
+          <div v-if="serialUpdate.status" class="local-speedtest-message">{{ serialUpdate.status }}</div>
+        </div>
+      </el-tab-pane>
+
       <el-tab-pane label="rc.local" name="rcLocal">
         <div class="system-tool-panel">
           <div class="system-tool-header">
@@ -1784,6 +1817,7 @@
         <el-button v-if="localSpeedTest.running" type="danger" @click="() => stopLocalSpeedTest()">停止</el-button>
         <el-button v-else type="primary" @click="startLocalSpeedTest">开始测速</el-button>
       </template>
+      <el-button v-else-if="systemToolsActiveTab === 'serialUpdate'" type="danger" :loading="serialUpdate.saving" @click="writeSerialUpdate">写入串号</el-button>
       <el-button v-else-if="systemToolsActiveTab === 'rcLocal'" type="primary" :loading="rcLocal.saving" @click="saveRcLocal">保存</el-button>
     </template>
   </el-dialog>
@@ -2323,7 +2357,7 @@ const wifiSettingsSummary = computed(() => {
   return wifiSettingsSaving.value ? '应用中...' : `${wifiInfo.value.wifiStatus24 ? '2.4G开' : '2.4G关'} / ${wifiInfo.value.wifiStatus5 ? '5G开' : '5G关'}`;
 });
 
-type SystemToolsTab = 'speedtest' | 'sms' | 'devui' | 'rcLocal';
+type SystemToolsTab = 'speedtest' | 'sms' | 'devui' | 'serialUpdate' | 'rcLocal';
 
 interface SmsMessage {
   id: number;
@@ -2424,6 +2458,30 @@ const rcLocal = reactive({
   loaded: false,
   content: '',
   status: '',
+});
+
+const serialUpdate = reactive({
+  digits: '',
+  saving: false,
+  status: '',
+  resultIni: '',
+});
+
+const serialUpdatePreview = computed(() => {
+  const digits = serialUpdate.digits.trim();
+  if (serialUpdate.resultIni) return serialUpdate.resultIni;
+  if (!/^\d{15}$/.test(digits)) return '';
+  const parts = ['0x08', `0x${digits[0]}A`];
+  for (let i = 1; i < digits.length; i += 2) {
+    parts.push(`0x${digits[i]}${digits[i + 1]}`);
+  }
+  return `[NV_SYS0]
+set=1
+type=2
+nvcode=550
+len=9
+par=${parts.join(',')}
+`;
 });
 
 const systemToolsSummary = computed(() => {
@@ -2876,6 +2934,49 @@ async function uploadDevuiWallpaper() {
   } finally {
     devui.wallpaperUploading = false;
     await loadDevuiStatus();
+  }
+}
+
+async function writeSerialUpdate() {
+  const digits = serialUpdate.digits.trim();
+  if (!/^\d{15}$/.test(digits)) {
+    ElMessage.warning('请输入 15 位数字串号');
+    return;
+  }
+  try {
+    await ElMessageBox.confirm(
+      `确认写入新串号 ${digits} 到 /nvefs/nvconfig.ini？写入成功后需要重启设备才会生效。`,
+      '确认串号更新',
+      {
+        confirmButtonText: '确认写入',
+        cancelButtonText: '取消',
+        type: 'warning',
+      },
+    );
+  } catch {
+    return;
+  }
+
+  serialUpdate.saving = true;
+  serialUpdate.status = '正在写入串号...';
+  try {
+    const res = await axios.post('/api/system/serial-update', {
+      digits,
+    });
+    const data = res.data.data || {};
+    if (data.ini) serialUpdate.resultIni = data.ini;
+    if (res.data.code !== 0) {
+      serialUpdate.status = res.data.msg || '串号写入失败';
+      ElMessage.error(serialUpdate.status);
+      return;
+    }
+    serialUpdate.status = res.data.msg || `已写入 ${data.bytes || 0} 字节，重启后生效`;
+    ElMessage.success(serialUpdate.status);
+  } catch (e: any) {
+    serialUpdate.status = '串号写入失败: ' + (e?.message ?? e);
+    ElMessage.error(serialUpdate.status);
+  } finally {
+    serialUpdate.saving = false;
   }
 }
 
@@ -3732,8 +3833,39 @@ async function applyNetworkMode() {
 
 function applyAirplaneModeValue(value: unknown) {
   const mode = String(value || '').toUpperCase();
-  airplaneMode.enabled = mode === 'OFFLINE' || mode === 'LOW_POWER' || mode === '0';
+  airplaneMode.enabled = hasInsertedSimCard() && (mode === 'OFFLINE' || mode === 'LOW_POWER' || mode === '0');
   airplaneMode.status = mode ? `operate_mode=${mode}` : '';
+}
+
+function hasInsertedSimCard(): boolean {
+  return [
+    simInfo2.value?.sim_iccid,
+    simInfo2.value?.sim_imsi,
+    simInfo2.value?.Operator,
+    simInfo2.value?.msisdn,
+  ].some(isUsableSimValue);
+}
+
+function isUsableSimValue(value: unknown): boolean {
+  const raw = String(value ?? '').trim();
+  if (!raw) return false;
+  const normalized = raw.toUpperCase().replace(/[\s_-]+/g, '');
+  if (!normalized) return false;
+  return ![
+    '-',
+    '--',
+    '0',
+    '00',
+    'N/A',
+    'NA',
+    'NULL',
+    'NONE',
+    'UNKNOWN',
+    'UNKNOW',
+    'NOSIM',
+    'SIMABSENT',
+    'NOTINSERTED',
+  ].includes(normalized);
 }
 
 async function loadAirplaneMode() {
@@ -5300,6 +5432,11 @@ watch(systemToolsActiveTab, (tab) => {
     });
   }
   if (tab === 'rcLocal' && !rcLocal.loaded) loadRcLocal();
+});
+
+watch(() => serialUpdate.digits, () => {
+  serialUpdate.resultIni = '';
+  serialUpdate.status = '';
 });
 
 onMounted(() => {
@@ -7431,6 +7568,7 @@ onUnmounted(() => {
   color: rgba(255, 255, 255, 0.88);
   font-size: 13px;
   line-height: 1.4;
+  overflow-wrap: anywhere;
 }
 .devui-patch-status .el-button {
   margin-top: 8px;
@@ -7512,6 +7650,20 @@ onUnmounted(() => {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.serial-update-status-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.serial-update-preview {
+  margin: 0;
+  padding: 12px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.24);
+  color: rgba(255, 255, 255, 0.86);
+  font-size: 12px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
 .sms-message-list {
   display: flex;
   flex-direction: column;
@@ -7563,6 +7715,9 @@ onUnmounted(() => {
   }
   .devui-status-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .serial-update-status-grid {
+    grid-template-columns: 1fr;
   }
   .devui-wallpaper-row {
     grid-template-columns: 1fr;

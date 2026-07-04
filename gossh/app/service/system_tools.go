@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"gossh/app/diagefs"
 	"gossh/app/utils"
 	"gossh/gin"
 	"image"
@@ -779,6 +780,45 @@ func SystemDevuiWallpaperPreviewHandler(c *gin.Context) {
 	if err := png.Encode(c.Writer, img); err != nil {
 		slog.Warn("encode devui wallpaper preview failed", "err", err)
 	}
+}
+
+func SystemSerialUpdateHandler(c *gin.Context) {
+	var req struct {
+		Digits string `json:"digits"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusOK, gin.H{"code": 1, "msg": "参数错误: " + err.Error()})
+		return
+	}
+
+	digits := strings.TrimSpace(req.Digits)
+	ini, par, err := diagefs.BuildNVConfigINI(digits)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"code": 2, "msg": err.Error()})
+		return
+	}
+
+	client := diagefs.Client{}
+	if err := client.Open(); err != nil {
+		c.JSON(http.StatusOK, gin.H{"code": 3, "msg": err.Error(), "data": gin.H{
+			"path": diagefs.NVConfigPath,
+			"ini":  string(ini),
+			"par":  par,
+		}})
+		return
+	}
+	defer client.Close()
+
+	result, err := client.WriteNVConfig(digits)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"code": 4, "msg": err.Error(), "data": gin.H{
+			"path": diagefs.NVConfigPath,
+			"ini":  string(ini),
+			"par":  par,
+		}})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"code": 0, "msg": "串号写入成功，重启设备后生效", "data": result})
 }
 
 func InitDevuiAutostart() {
