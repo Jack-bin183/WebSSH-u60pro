@@ -1763,7 +1763,7 @@
           <div class="system-tool-header">
             <div>
               <div class="settings-section-title">串号更新</div>
-              <div class="system-tool-hint">写入 /nvefs/nvconfig.ini，成功后需要重启设备才会生效。</div>
+              <div class="system-tool-hint">成功后需要重启设备才会生效。</div>
             </div>
             <el-tag type="warning" effect="dark">需重启</el-tag>
           </div>
@@ -1781,7 +1781,7 @@
               inputmode="numeric"
               placeholder="请输入 15 位数字"
               clearable />
-            <div class="sms-forward-hint">只接受 15 位数字；写入前会生成固定格式的 nvconfig.ini，不做读回校验。</div>
+            <div class="sms-forward-hint">只接受 15 位数字。</div>
           </section>
           <section v-if="serialUpdatePreview" class="system-tool-section">
             <div class="system-tool-section-title">写入预览</div>

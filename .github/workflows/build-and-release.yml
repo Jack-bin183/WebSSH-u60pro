@@ -35,7 +35,7 @@ jobs:
       - name: Generate changelog
         run: |
           # 此时本次的 tag 还没创建，所以最新已有 tag 就是上一个版本
-          PREV_TAG=$(git tag --list | sort -r | head -n 1)
+          PREV_TAG=$(git tag --list '20[0-9][0-9][0-9][0-9][0-9][0-9]_[0-9][0-9][0-9][0-9][0-9][0-9]' | sort -r | head -n 1)
           BUILD_TIME=$(TZ=Asia/Shanghai date '+%Y-%m-%d %H:%M:%S')
           {
             echo "## ${VERSION}"
@@ -84,31 +84,28 @@ jobs:
           go-version: '1.24.x'
 
       # 6.5 CGO ARM64 musl 交叉编译工具链
-      - name: Setup Zig
-        uses: mlugg/setup-zig@v1
-        with:
-          version: 0.13.0
+      - name: Install OpenWrt ARM64 musl toolchain
+        run: |
+          curl -L https://downloads.openwrt.org/releases/22.03.5/targets/armvirt/64/openwrt-toolchain-22.03.5-armvirt-64_gcc-11.2.0_musl.Linux-x86_64.tar.xz -o /tmp/openwrt-toolchain.tar.xz
+          sudo tar -C /opt -xJf /tmp/openwrt-toolchain.tar.xz
+          echo "/opt/openwrt-toolchain-22.03.5-armvirt-64_gcc-11.2.0_musl.Linux-x86_64/toolchain-aarch64_cortex-a53_gcc-11.2.0_musl/bin" >> $GITHUB_PATH
+          /opt/openwrt-toolchain-22.03.5-armvirt-64_gcc-11.2.0_musl.Linux-x86_64/toolchain-aarch64_cortex-a53_gcc-11.2.0_musl/bin/aarch64-openwrt-linux-musl-gcc --version
 
       # 7. 构建 Go（二进制 + 内嵌版本）
       - name: Build Go binary
         run: |
           cd gossh
 
-          cat > /tmp/aarch64-linux-musl-cc <<'EOF'
-          #!/bin/sh
-          exec zig cc -target aarch64-linux-musl "$@"
-          EOF
-          chmod +x /tmp/aarch64-linux-musl-cc
-
           export CGO_ENABLED=1
           export GOOS=linux
           export GOARCH=arm64
-          export CC=/tmp/aarch64-linux-musl-cc
+          export CC=aarch64-openwrt-linux-musl-gcc
+          export STAGING_DIR=/opt/openwrt-toolchain-22.03.5-armvirt-64_gcc-11.2.0_musl.Linux-x86_64
 
           go env -w GOPROXY=https://goproxy.cn,direct
           go mod tidy
 
-          go build -trimpath -ldflags="-s -w -X main.version=${VERSION}" -o webssh_${VERSION}
+          go build -trimpath -ldflags="-s -w -linkmode external -extldflags '-Wl,-dynamic-linker,/lib/ld-musl-aarch64.so.1' -X main.version=${VERSION}" -o webssh_${VERSION}
           file webssh_${VERSION}
           readelf -l webssh_${VERSION} | grep 'interpreter' || true
 
