@@ -81,7 +81,13 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.22'
+          go-version: '1.24.x'
+
+      # 6.5 CGO ARM64 交叉编译工具链
+      - name: Install ARM64 CGO toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu libc6-dev-arm64-cross
 
       # 7. 构建 Go（二进制 + 内嵌版本）
       - name: Build Go binary
@@ -91,6 +97,7 @@ jobs:
           export CGO_ENABLED=1
           export GOOS=linux
           export GOARCH=arm64
+          export CC=aarch64-linux-gnu-gcc
 
           go env -w GOPROXY=https://goproxy.cn,direct
           go mod tidy
