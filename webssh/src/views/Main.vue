@@ -2473,7 +2473,7 @@ const serialUpdatePreview = computed(() => {
   if (!/^\d{15}$/.test(digits)) return '';
   const parts = ['0x08', `0x${digits[0]}A`];
   for (let i = 1; i < digits.length; i += 2) {
-    parts.push(`0x${digits[i]}${digits[i + 1]}`);
+    parts.push(`0x${digits[i + 1]}${digits[i]}`);
   }
   return `[NV_SYS0]
 set=1
