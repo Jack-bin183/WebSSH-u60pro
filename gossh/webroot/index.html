@@ -21,26 +21,60 @@
         --app-safe-bottom: env(safe-area-inset-bottom, 0px);
         --app-safe-left: env(safe-area-inset-left, 0px);
       }
-
-      /* 添加到主屏幕的 PWA（全屏 standalone）下，状态栏会浮在内容之上，
-         且 iOS 常把顶部安全区报告为 0，导致内容顶到状态栏。
-         这里给顶部安全区设一个下限，保证留出状态栏空间；浏览器内不受影响。
-         html.ios-pwa 是 JS 兜底：部分 iOS 版本的主屏幕 Web App
-         不匹配 display-mode 媒体查询，但 navigator.standalone 为 true。 */
-      /* iOS 添加到主屏幕的 Web App（html.ios-pwa 由下方脚本检测添加）：
-         实测该场景下 env(safe-area-inset-top) 求值为 0，CSS 变量链路不生效，
-         只能在 html 上用固定 padding 给状态栏留位。
-         box-sizing 让 60px 计入 100% 高度，避免页面恒定多出 60px 滚动。
-         状态栏背后露出的是 html 背景，需按亮/暗模式对齐页面渐变起点。 */
       html.ios-pwa {
-        padding-top: 60px;
         box-sizing: border-box;
+        --app-safe-top: 0px;
+        --app-safe-bottom: 0px;
         background: #315697; /* Main 页浅色渐变起点 */
+      }
+
+      html.ios-pwa body {
+        height: auto;
+        min-height: 100dvh;
+        padding-top: env(safe-area-inset-top, 0px);
+        box-sizing: border-box;
+        background: #315697;
+      }
+
+      html.ios-pwa body::before {
+        content: "";
+        position: fixed;
+        top: 0;
+        right: 0;
+        left: 0;
+        height: env(safe-area-inset-top, 0px);
+        background: #315697;
+        pointer-events: none;
+        z-index: 3000;
+      }
+
+      html.ios-pwa #app {
+        height: auto;
+        min-height: calc(100dvh - env(safe-area-inset-top, 0px));
+      }
+
+      html.ios-pwa input,
+      html.ios-pwa textarea,
+      html.ios-pwa select,
+      html.ios-pwa .el-input__inner,
+      html.ios-pwa .el-textarea__inner,
+      html.ios-pwa .el-select__input {
+        font-size: 16px !important;
+      }
+
+      html.ios-pwa .el-select__selected-item,
+      html.ios-pwa .el-select__placeholder {
+        font-size: inherit;
       }
 
       @media (prefers-color-scheme: dark) {
         html.ios-pwa {
           background: #0f172a; /* 夜间模式深色渐变起点，需同等优先级覆盖上面的浅色 */
+        }
+
+        html.ios-pwa body,
+        html.ios-pwa body::before {
+          background: #263144;
         }
       }
 
@@ -48,6 +82,7 @@
       body,
       #app {
         height: 100%;
+        min-height: 100dvh;
         margin: 0px;
         padding: 0px;
         font-family: "Helvetica Neue", Helvetica, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "微软雅黑", Arial, sans-serif;
@@ -76,10 +111,13 @@
       // 兜底处理不匹配 display-mode 媒体查询的旧版 iOS
       if (navigator.standalone) {
         document.documentElement.classList.add("ios-pwa");
+        document
+          .querySelector('meta[name="viewport"]')
+          ?.setAttribute("content", "width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover");
       }
     </script>
-    <script type="module" crossorigin src="./assets/index-BeGiKzb2.js"></script>
-    <link rel="stylesheet" crossorigin href="./assets/index-DHEWMTk3.css">
+    <script type="module" crossorigin src="./assets/index-hA-3DNY1.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-BA6yjSf9.css">
   </head>
 
   <body>

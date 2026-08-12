@@ -1395,6 +1395,95 @@
           </div>
         </div>
       </section>
+
+      <section class="settings-section neighbor-cell-section">
+        <div class="neighbor-cell-header">
+          <div>
+            <div class="settings-section-title">邻近小区</div>
+            <div class="neighbor-cell-subtitle">
+              {{ neighborCellResult.network_provider || '当前网络' }}
+              <span v-if="neighborCellResult.network_type"> · {{ neighborCellResult.network_type }}</span>
+            </div>
+          </div>
+          <div class="neighbor-cell-actions">
+            <el-tag size="small" :type="neighborCellResult.source === 'parser' ? 'success' : 'warning'">
+              {{ neighborSourceLabel }}
+            </el-tag>
+            <el-button
+              size="small"
+              :icon="RefreshIcon"
+              :loading="neighborCellLoading"
+              @click="loadNeighborCells">
+              刷新
+            </el-button>
+          </div>
+        </div>
+
+        <div v-if="neighborCellError" class="neighbor-cell-message error">{{ neighborCellError }}</div>
+        <div v-else-if="neighborCellResult.warning" class="neighbor-cell-message warning">
+          原生日志暂不可用，当前展示设备网络接口可见的数据。
+        </div>
+
+        <div v-loading="neighborCellLoading" class="neighbor-cell-content">
+          <div v-if="neighborCellResult.serving.length" class="neighbor-cell-table-block">
+            <div class="settings-small-title">当前服务小区</div>
+            <el-table :data="neighborCellResult.serving" size="small" class="neighbor-cell-table">
+              <el-table-column prop="rat" label="制式" width="58" class-name="neighbor-rat-column" label-class-name="neighbor-rat-column" />
+              <el-table-column prop="pci" label="PCI" width="58" />
+              <el-table-column label="频段" width="60">
+                <template #default="scope">{{ formatNeighborBand(scope.row) }}</template>
+              </el-table-column>
+              <el-table-column label="ARFCN" min-width="84">
+                <template #default="scope">{{ formatNeighborValue(scope.row.arfcn) }}</template>
+              </el-table-column>
+              <el-table-column label="RSRP" min-width="92">
+                <template #default="scope">{{ formatNeighborSignal(scope.row.rsrp_median, 'dBm') }}</template>
+              </el-table-column>
+              <el-table-column label="RSRQ" min-width="88" class-name="neighbor-detail-column" label-class-name="neighbor-detail-column">
+                <template #default="scope">{{ formatNeighborSignal(scope.row.rsrq, 'dB') }}</template>
+              </el-table-column>
+              <el-table-column label="SINR" min-width="88" class-name="neighbor-detail-column" label-class-name="neighbor-detail-column">
+                <template #default="scope">{{ formatNeighborSignal(scope.row.sinr, 'dB') }}</template>
+              </el-table-column>
+            </el-table>
+          </div>
+
+          <div class="neighbor-cell-table-block">
+            <div class="neighbor-cell-list-title">
+              <div class="settings-small-title">检测到的邻区（{{ neighborCellResult.neighbors.length }}）</div>
+              <span class="neighbor-cell-selection-hint">点击邻区可填入锁小区</span>
+            </div>
+            <el-table
+              :data="neighborCellResult.neighbors"
+              size="small"
+              max-height="280"
+              empty-text="暂未检测到邻区，请稍后刷新"
+              highlight-current-row
+              @row-click="fillNeighborCell"
+              class="neighbor-cell-table">
+              <el-table-column prop="rat" label="制式" width="58" class-name="neighbor-rat-column" label-class-name="neighbor-rat-column" />
+              <el-table-column prop="pci" label="PCI" width="58" />
+              <el-table-column label="频段" width="60">
+                <template #default="scope">{{ formatNeighborBand(scope.row) }}</template>
+              </el-table-column>
+              <el-table-column label="ARFCN" min-width="84">
+                <template #default="scope">{{ formatNeighborValue(scope.row.arfcn) }}</template>
+              </el-table-column>
+              <el-table-column label="RSRP" min-width="92">
+                <template #default="scope">{{ formatNeighborSignal(scope.row.rsrp_median, 'dBm') }}</template>
+              </el-table-column>
+              <el-table-column label="样本" width="60" class-name="neighbor-detail-column" label-class-name="neighbor-detail-column">
+                <template #default="scope">{{ scope.row.samples || '-' }}</template>
+              </el-table-column>
+              <el-table-column label="操作" width="64" class-name="neighbor-fill-column" label-class-name="neighbor-fill-column">
+                <template #default="scope">
+                  <el-button size="small" link type="primary" @click.stop="fillNeighborCell(scope.row)">填入</el-button>
+                </template>
+              </el-table-column>
+            </el-table>
+          </div>
+        </div>
+      </section>
     </div>
     <template #footer>
       <el-button @click="networkSettingsDialogVisible = false">关闭</el-button>
@@ -1941,6 +2030,30 @@ interface NetInfoResult {
   [key: string]: any;
 }
 
+interface NeighborCellData {
+  rat: string;
+  pci: number;
+  arfcn: number | null;
+  band: number | null;
+  samples?: number;
+  direct_hits?: number;
+  rsrp_median: number | null;
+  rsrq: number | null;
+  sinr: number | null;
+  bandwidth?: string;
+}
+
+interface NeighborCellResult {
+  engine: string;
+  version: string;
+  source: 'parser' | 'ubus' | '';
+  serving: NeighborCellData[];
+  neighbors: NeighborCellData[];
+  network_type?: string;
+  network_provider?: string;
+  warning?: string;
+}
+
 interface NetworkInterface {
   up: boolean;
   device?: string;
@@ -2302,6 +2415,20 @@ const networkSettingsDialogVisible = ref(false);
 const wifiSettingsDialogVisible = ref(false);
 const networkApplying = ref<NetworkApplyTarget>('');
 const wifiSettingsSaving = ref<WifiApplyTarget>('');
+const neighborCellLoading = ref(false);
+const neighborCellError = ref('');
+const neighborCellResult = ref<NeighborCellResult>({
+  engine: '',
+  version: '',
+  source: '',
+  serving: [],
+  neighbors: [],
+});
+const neighborSourceLabel = computed(() => {
+  if (neighborCellResult.value.source === 'parser') return '原生日志';
+  if (neighborCellResult.value.source === 'ubus') return '设备接口';
+  return '等待采集';
+});
 
 const networkForm = reactive({
   net_select: '',
@@ -3793,6 +3920,83 @@ async function openNetworkSettingsDialog() {
   syncNetworkFormFromCurrent();
   networkSettingsDialogVisible.value = true;
   loadAirplaneMode();
+  void loadNeighborCells();
+}
+
+async function loadNeighborCells() {
+  if (neighborCellLoading.value) return;
+  neighborCellLoading.value = true;
+  neighborCellError.value = '';
+  try {
+    const response = await axios.get('/api/neighbor/cells', { timeout: 20000 });
+    if (response.data.code !== 0) {
+      throw new Error(response.data.msg || '邻区采集失败');
+    }
+    const result = response.data.data || {};
+    neighborCellResult.value = {
+      engine: result.engine || '',
+      version: result.version || '',
+      source: result.source || '',
+      serving: Array.isArray(result.serving) ? result.serving : [],
+      neighbors: Array.isArray(result.neighbors) ? result.neighbors : [],
+      network_type: result.network_type || '',
+      network_provider: result.network_provider || '',
+      warning: result.warning || '',
+    };
+  } catch (err: any) {
+    neighborCellError.value = err?.message || '邻区采集失败';
+  } finally {
+    neighborCellLoading.value = false;
+  }
+}
+
+function formatNeighborValue(value: number | null | undefined): string {
+  return value === null || value === undefined ? '-' : String(value);
+}
+
+function formatNeighborBand(cell: NeighborCellData): string {
+  if (cell.band === null || cell.band === undefined) return '-';
+  return `${cell.rat?.toUpperCase() === 'NR' ? 'N' : 'B'}${cell.band}`;
+}
+
+function formatNeighborSignal(value: number | null | undefined, unit: string): string {
+  if (value === null || value === undefined || Number.isNaN(Number(value))) return '-';
+  return `${Number(value).toFixed(1)} ${unit}`;
+}
+
+function fillNeighborCell(cell: NeighborCellData) {
+  const rat = String(cell.rat || '').toUpperCase();
+  if (!Number.isFinite(Number(cell.pci))) {
+    ElMessage.warning('该邻区缺少有效 PCI，无法填入');
+    return;
+  }
+
+  const pci = String(cell.pci);
+  const arfcn = cell.arfcn === null || cell.arfcn === undefined ? '' : String(cell.arfcn);
+  if (rat === 'NR') {
+    networkForm.lock_nr_pci = pci;
+    networkForm.lock_nr_earfcn = arfcn;
+    networkForm.lock_nr_band = cell.band === null || cell.band === undefined ? '' : String(cell.band);
+    if (!arfcn || !networkForm.lock_nr_band) {
+      ElMessage.warning('已填入可用的 5G 邻区数据，缺失字段请手动补充');
+    } else {
+      ElMessage.success('已填入 5G 锁小区输入框，请确认后点击应用');
+    }
+    return;
+  }
+
+  if (rat === 'LTE') {
+    networkForm.lock_lte_pci = pci;
+    networkForm.lock_lte_earfcn = arfcn;
+    if (!arfcn) {
+      ElMessage.warning('已填入可用的 4G 邻区数据，EARFCN 请手动补充');
+    } else {
+      ElMessage.success('已填入 4G 锁小区输入框，请确认后点击应用');
+    }
+    return;
+  }
+
+  ElMessage.warning(`暂不支持 ${rat || '未知制式'} 邻区锁定`);
 }
 
 function openWifiSettingsDialog() {
@@ -8702,6 +8906,104 @@ onUnmounted(() => {
   gap: 8px;
 }
 
+.neighbor-cell-section {
+  min-width: 0;
+}
+
+.neighbor-cell-header,
+.neighbor-cell-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.neighbor-cell-header .settings-section-title {
+  margin: 0;
+}
+
+.neighbor-cell-subtitle {
+  margin-top: 4px;
+  color: rgba(255, 255, 255, 0.56);
+  font-size: 12px;
+}
+
+.neighbor-cell-message {
+  margin-top: 10px;
+  padding: 8px 10px;
+  border-radius: 7px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.neighbor-cell-message.warning {
+  color: #fde68a;
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid rgba(245, 158, 11, 0.28);
+}
+
+.neighbor-cell-message.error {
+  color: #fecaca;
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid rgba(239, 68, 68, 0.28);
+}
+
+.neighbor-cell-content {
+  min-height: 72px;
+  margin-top: 12px;
+}
+
+.neighbor-cell-table-block + .neighbor-cell-table-block {
+  margin-top: 14px;
+}
+
+.neighbor-cell-list-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.neighbor-cell-list-title .settings-small-title {
+  margin-bottom: 8px;
+}
+
+.neighbor-cell-selection-hint {
+  margin-bottom: 8px;
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 11px;
+}
+
+.neighbor-cell-table {
+  width: 100%;
+  border-radius: 7px;
+  overflow: hidden;
+  --el-table-bg-color: rgba(10, 31, 68, 0.22);
+  --el-table-tr-bg-color: transparent;
+  --el-table-header-bg-color: rgba(96, 165, 250, 0.16);
+  --el-table-text-color: rgba(255, 255, 255, 0.84);
+  --el-table-header-text-color: rgba(255, 255, 255, 0.92);
+  --el-table-border-color: rgba(255, 255, 255, 0.12);
+  --el-table-row-hover-bg-color: rgba(96, 165, 250, 0.12);
+}
+
+.neighbor-cell-table::before,
+.neighbor-cell-table .el-table__inner-wrapper::before {
+  background-color: rgba(255, 255, 255, 0.12);
+}
+
+.neighbor-cell-table .el-table__empty-text {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.neighbor-cell-table .el-table__row {
+  cursor: pointer;
+}
+
+.neighbor-cell-table .el-table__body tr.current-row > td.el-table__cell {
+  background-color: rgba(34, 197, 94, 0.16);
+}
+
 .wireless-dialog .settings-panel .el-input__wrapper {
   background: rgba(10, 31, 68, 0.24);
   border: 1px solid rgba(255, 255, 255, 0.16);
@@ -8748,6 +9050,22 @@ onUnmounted(() => {
   .wifi-setting-actions {
     width: 100%;
     justify-content: flex-start;
+  }
+
+  .neighbor-cell-header {
+    align-items: flex-start;
+  }
+
+  .neighbor-cell-table .neighbor-rat-column,
+  .neighbor-cell-table .neighbor-detail-column,
+  .neighbor-cell-table .neighbor-fill-column {
+    display: none;
+  }
+
+  .neighbor-cell-list-title {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 0;
   }
 }
 </style>
