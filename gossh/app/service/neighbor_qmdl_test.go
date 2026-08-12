@@ -83,6 +83,7 @@ func TestDecodeCurrentU60LTEQShrinkSignatures(t *testing.T) {
 		{"identity", 0xd939607c, []uint32{1650, 104}},
 		{"measurement", 0xd93960a0, []uint32{1650, 105, qmdlSignedWord(-1030), qmdlSignedWord(-140), 20}},
 		{"metric measurement", 0xd8fea258, []uint32{1650, 106, qmdlSignedWord(-1040), qmdlSignedWord(-145), 20}},
+		{"SDX75 fractional measurement", 0xd94f5690, []uint32{1650, 107, qmdlSignedWord(-103), 6250, qmdlSignedWord(-91), 3125}},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -90,7 +91,7 @@ func TestDecodeCurrentU60LTEQShrinkSignatures(t *testing.T) {
 			if !ok {
 				t.Fatalf("signature %#x was not decoded", test.id)
 			}
-			if report.rat != 1 || report.arfcn != 1650 || report.pci < 101 || report.pci > 106 {
+			if report.rat != 1 || report.arfcn != 1650 || report.pci < 101 || report.pci > 107 {
 				t.Fatalf("signature %#x decoded as %+v", test.id, report)
 			}
 			if test.name != "identity" && (!report.direct || report.rsrp > -100 || report.rsrp < -104) {
@@ -101,6 +102,15 @@ func TestDecodeCurrentU60LTEQShrinkSignatures(t *testing.T) {
 
 	if _, ok := decodeQMDLLTEReport(0xd8fea210, []uint32{0, 0, 1650, 101, qmdlSignedWord(-1009), 0}); ok {
 		t.Fatal("invalid LTE metric must be ignored")
+	}
+
+	report, ok := decodeQMDLLTEReport(0xd94f5690, []uint32{1300, 41, qmdlSignedWord(-92), 6015, qmdlSignedWord(-82), 312})
+	if !ok || !report.direct || math.Abs(report.rsrp-(-92.6)) > 0.000001 {
+		t.Fatalf("unexpected SDX75 fractional LTE report: %+v, ok=%v", report, ok)
+	}
+	invalid, ok := decodeQMDLLTEReport(0xd94f5690, []uint32{1300, 41, qmdlSignedWord(-92), 10000, qmdlSignedWord(-82), 312})
+	if !ok || invalid.direct {
+		t.Fatalf("invalid SDX75 fractional RSRP must not be accepted: %+v, ok=%v", invalid, ok)
 	}
 }
 

@@ -15,7 +15,7 @@ import (
 
 const (
 	neighborGoParserEngine  = "go-native"
-	neighborGoParserVersion = "1.1.0"
+	neighborGoParserVersion = "1.2.0"
 	neighborMaxDiagWords    = 236
 )
 
@@ -215,6 +215,7 @@ func (parser *qmdlParser) parseFrame(payload []byte, seq, fileIndex uint32) {
 func decodeQMDLLTEReport(logID uint32, words []uint32) (qmdlReport, bool) {
 	var arfcn, pci uint32
 	rsrpIndex := -1
+	rsrpFractionIndex := -1
 	requireValid := false
 
 	switch logID {
@@ -248,6 +249,11 @@ func decodeQMDLLTEReport(logID uint32, words []uint32) (qmdlReport, bool) {
 			return qmdlReport{}, false
 		}
 		arfcn, pci, rsrpIndex = words[0], words[1], 2
+	case 0xd94f5690: // SDX75: EARFCN, PCI, RSRP integer, RSRP fraction, ...
+		if len(words) < 6 {
+			return qmdlReport{}, false
+		}
+		arfcn, pci, rsrpIndex, rsrpFractionIndex = words[0], words[1], 2, 3
 	default:
 		return qmdlReport{}, false
 	}
@@ -260,7 +266,11 @@ func decodeQMDLLTEReport(logID uint32, words []uint32) (qmdlReport, bool) {
 	}
 	report := qmdlReport{rat: 1, pci: pci, arfcn: arfcn}
 	if rsrpIndex >= 0 {
-		report.rsrp, report.direct = decodeLTERSRP(int32(words[rsrpIndex]))
+		if rsrpFractionIndex >= 0 {
+			report.rsrp, report.direct = decodeLTEFractionalRSRP(int32(words[rsrpIndex]), words[rsrpFractionIndex])
+		} else {
+			report.rsrp, report.direct = decodeLTERSRP(int32(words[rsrpIndex]))
+		}
 	}
 	return report, true
 }
@@ -380,6 +390,13 @@ func decodeLTERSRP(raw int32) (float64, bool) {
 		return roundQMDL(float64(raw) / 10), true
 	}
 	return 0, false
+}
+
+func decodeLTEFractionalRSRP(integer int32, fraction uint32) (float64, bool) {
+	if integer < -140 || integer > -30 || fraction > 9999 {
+		return 0, false
+	}
+	return roundQMDL(float64(integer) - float64(fraction)/10000), true
 }
 
 func roundQMDL(value float64) float64 {
