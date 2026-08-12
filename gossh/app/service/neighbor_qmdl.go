@@ -15,7 +15,7 @@ import (
 
 const (
 	neighborGoParserEngine  = "go-native"
-	neighborGoParserVersion = "1.2.0"
+	neighborGoParserVersion = "1.2.1"
 	neighborMaxDiagWords    = 236
 )
 
