@@ -58,4 +58,7 @@ declare module 'vue' {
     SshdCert: typeof import('./src/components/SshdCert.vue')['default']
     SshdUser: typeof import('./src/components/SshdUser.vue')['default']
   }
+  export interface ComponentCustomProperties {
+    vLoading: typeof import('element-plus/es')['ElLoadingDirective']
+  }
 }

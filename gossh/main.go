@@ -1169,6 +1169,12 @@ func main() {
 		auth.POST("/api/openadb", OpenAdbHandler)
 	}
 
+	{ // 邻近小区
+		auth.GET("/api/neighbor/status", service.NeighborServiceStatusHandler)
+		auth.GET("/api/neighbor/cells", service.NeighborCellHandler)
+		auth.POST("/api/neighbor/stop", service.NeighborServiceStopHandler)
+	}
+
 	{ // Mihomo 透明代理管理
 		auth.GET("/api/mihomo/status", service.MihomoStatusHandler)
 		auth.GET("/api/mihomo/dir", service.MihomoGetDirHandler)
