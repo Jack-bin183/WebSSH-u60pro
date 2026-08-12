@@ -92,3 +92,35 @@ func TestAdaptNativeServingInfersNRWithoutUbus(t *testing.T) {
 		t.Fatalf("high ARFCN serving cell should be inferred as NR: %+v", result.Serving)
 	}
 }
+
+func TestAdaptNativeResultExcludesCurrentServingCellFromNeighbors(t *testing.T) {
+	servingARFCN := 1300
+	otherARFCN := 1650
+	native := &nativeNeighborResult{
+		Engine: "go-native", Version: "1.2.1",
+		Neighbors: []nativeNeighborCell{
+			{RAT: "LTE", PCI: 240, ARFCN: &servingARFCN, Samples: 908},
+			{RAT: "LTE", PCI: 240, ARFCN: &otherARFCN, Samples: 3},
+			{RAT: "LTE", PCI: 41, ARFCN: &servingARFCN, Samples: 815},
+		},
+	}
+	snapshot := neighborUbusSnapshot{
+		"network_type":       "LTE",
+		"lte_pci":            "240",
+		"wan_active_band":    "LTE_BAND_3",
+		"wan_active_channel": "1300",
+	}
+
+	result := adaptNativeNeighborResult(native, snapshot)
+	if len(result.Serving) != 1 || result.Serving[0].PCI != 240 {
+		t.Fatalf("unexpected serving cells: %+v", result.Serving)
+	}
+	if len(result.Neighbors) != 2 {
+		t.Fatalf("neighbors = %+v; want PCI 41/1300 and PCI 240/1650", result.Neighbors)
+	}
+	for _, cell := range result.Neighbors {
+		if cell.PCI == 240 && cell.ARFCN != nil && *cell.ARFCN == servingARFCN {
+			t.Fatalf("current serving cell leaked into neighbors: %+v", cell)
+		}
+	}
+}

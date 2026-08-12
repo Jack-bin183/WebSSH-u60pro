@@ -71,6 +71,49 @@ func TestQMDLParserLTEFormatsAndMedian(t *testing.T) {
 	assertFloatPointer(t, "LTE median", neighbor.RSRPMedian, -100.45)
 }
 
+func TestDecodeCurrentU60LTEQShrinkSignatures(t *testing.T) {
+	tests := []struct {
+		name  string
+		id    uint32
+		words []uint32
+	}{
+		{"cell dump", 0xd8fea29c, []uint32{0, 1650, 101, qmdlSignedWord(-1009), qmdlSignedWord(-125), 20}},
+		{"metric old image", 0xd8f02d94, []uint32{0, 1, 1650, 102, qmdlSignedWord(-1010), qmdlSignedWord(-130)}},
+		{"metric current image", 0xd8fea210, []uint32{0, 1, 1650, 103, qmdlSignedWord(-1020), qmdlSignedWord(-135)}},
+		{"identity", 0xd939607c, []uint32{1650, 104}},
+		{"measurement", 0xd93960a0, []uint32{1650, 105, qmdlSignedWord(-1030), qmdlSignedWord(-140), 20}},
+		{"metric measurement", 0xd8fea258, []uint32{1650, 106, qmdlSignedWord(-1040), qmdlSignedWord(-145), 20}},
+		{"SDX75 fractional measurement", 0xd94f5690, []uint32{1650, 107, qmdlSignedWord(-103), 6250, qmdlSignedWord(-91), 3125}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			report, ok := decodeQMDLLTEReport(test.id, test.words)
+			if !ok {
+				t.Fatalf("signature %#x was not decoded", test.id)
+			}
+			if report.rat != 1 || report.arfcn != 1650 || report.pci < 101 || report.pci > 107 {
+				t.Fatalf("signature %#x decoded as %+v", test.id, report)
+			}
+			if test.name != "identity" && (!report.direct || report.rsrp > -100 || report.rsrp < -104) {
+				t.Fatalf("signature %#x has invalid RSRP: %+v", test.id, report)
+			}
+		})
+	}
+
+	if _, ok := decodeQMDLLTEReport(0xd8fea210, []uint32{0, 0, 1650, 101, qmdlSignedWord(-1009), 0}); ok {
+		t.Fatal("invalid LTE metric must be ignored")
+	}
+
+	report, ok := decodeQMDLLTEReport(0xd94f5690, []uint32{1300, 41, qmdlSignedWord(-92), 6015, qmdlSignedWord(-82), 312})
+	if !ok || !report.direct || math.Abs(report.rsrp-(-92.6)) > 0.000001 {
+		t.Fatalf("unexpected SDX75 fractional LTE report: %+v, ok=%v", report, ok)
+	}
+	invalid, ok := decodeQMDLLTEReport(0xd94f5690, []uint32{1300, 41, qmdlSignedWord(-92), 10000, qmdlSignedWord(-82), 312})
+	if !ok || invalid.direct {
+		t.Fatalf("invalid SDX75 fractional RSRP must not be accepted: %+v, ok=%v", invalid, ok)
+	}
+}
+
 func TestQMDLParserMalformedAndEscapedFrames(t *testing.T) {
 	valid := buildQMDLFrame(0xd8fe54a0, 1650, 126, -100, 0)
 	if !bytes.Contains(valid, []byte{0x7d, 0x5e}) {
@@ -155,4 +198,8 @@ func assertFloatPointer(t *testing.T, name string, actual *float64, expected flo
 	if actual == nil || math.Abs(*actual-expected) > 0.000001 {
 		t.Fatalf("%s = %v; want %v", name, actual, expected)
 	}
+}
+
+func qmdlSignedWord(value int32) uint32 {
+	return uint32(value)
 }

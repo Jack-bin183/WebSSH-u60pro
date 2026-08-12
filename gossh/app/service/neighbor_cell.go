@@ -860,9 +860,21 @@ func adaptNativeNeighborResult(native *nativeNeighborResult, snapshot neighborUb
 			Samples: raw.Samples, DirectHits: raw.DirectHits, FirstSeq: raw.FirstSeq, LastSeq: raw.LastSeq,
 			RSRPMedian: raw.RSRPMedian, PlausibleSamples: raw.PlausibleSamples,
 		}
+		if isCurrentServingCell(cell, result.Serving) {
+			continue
+		}
 		appendUniqueNeighborCell(&result.Neighbors, cell)
 	}
 	return result
+}
+
+func isCurrentServingCell(candidate NeighborCell, serving []NeighborCell) bool {
+	for _, cell := range serving {
+		if strings.EqualFold(cell.RAT, candidate.RAT) && cell.PCI == candidate.PCI && sameOptionalInt(cell.ARFCN, candidate.ARFCN) {
+			return true
+		}
+	}
+	return false
 }
 
 func matchServingCell(pci int, arfcn *int, cells []NeighborCell) (NeighborCell, bool) {

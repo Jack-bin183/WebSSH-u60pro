@@ -15,7 +15,7 @@ import (
 
 const (
 	neighborGoParserEngine  = "go-native"
-	neighborGoParserVersion = "1.0.0"
+	neighborGoParserVersion = "1.2.1"
 	neighborMaxDiagWords    = 236
 )
 
@@ -201,22 +201,78 @@ func (parser *qmdlParser) parseFrame(payload []byte, seq, fileIndex uint32) {
 		return
 	}
 
+	if report, ok := decodeQMDLLTEReport(logID, words); ok {
+		report.seq = seq
+		report.file = fileIndex
+		parser.reports = append(parser.reports, report)
+	}
+}
+
+// decodeQMDLLTEReport supports both the hashes used by u60nbrqt-native 0.7.1
+// and the hashes present in the U60Pro SDX75 QShrink 4 database. QShrink hashes
+// change when Qualcomm rebuilds the modem image even when the format string and
+// argument layout stay the same.
+func decodeQMDLLTEReport(logID uint32, words []uint32) (qmdlReport, bool) {
+	var arfcn, pci uint32
+	rsrpIndex := -1
+	rsrpFractionIndex := -1
+	requireValid := false
+
 	switch logID {
-	case 0xd936846c:
-		if len(words) >= 2 && words[1] <= 503 {
-			parser.reports = append(parser.reports, qmdlReport{
-				seq: seq, file: fileIndex, rat: 1, pci: words[1], arfcn: words[0],
-			})
+	case 0xd936846c: // Legacy: EARFCN, PCI.
+		if len(words) < 2 {
+			return qmdlReport{}, false
 		}
-	case 0xd8fe54a0:
-		if len(words) >= 4 && words[1] <= 503 {
-			rsrp, direct := decodeLTERSRP(int32(words[2]))
-			parser.reports = append(parser.reports, qmdlReport{
-				seq: seq, file: fileIndex, rat: 1, pci: words[1], arfcn: words[0],
-				rsrp: rsrp, direct: direct,
-			})
+		arfcn, pci = words[0], words[1]
+	case 0xd8fe54a0: // Legacy: EARFCN, PCI, RSRP, ...
+		if len(words) < 4 {
+			return qmdlReport{}, false
+		}
+		arfcn, pci, rsrpIndex = words[0], words[1], 2
+	case 0xd8fea29c: // Cell, EARFCN, PCI, RSRP, RSRQ, elapsed_ms.
+		if len(words) < 6 {
+			return qmdlReport{}, false
+		}
+		arfcn, pci, rsrpIndex = words[1], words[2], 3
+	case 0xd8f02d94, 0xd8fea210: // LTE index, valid, EARFCN, PCI, RSRP, RSRQ.
+		if len(words) < 6 {
+			return qmdlReport{}, false
+		}
+		arfcn, pci, rsrpIndex, requireValid = words[2], words[3], 4, true
+	case 0xd939607c: // NBR CELLS MEAS: EARFCN, PCI.
+		if len(words) < 2 {
+			return qmdlReport{}, false
+		}
+		arfcn, pci = words[0], words[1]
+	case 0xd93960a0, 0xd8fea258: // EARFCN, PCI, RSRP, RSRQ, elapsed_ms.
+		if len(words) < 5 {
+			return qmdlReport{}, false
+		}
+		arfcn, pci, rsrpIndex = words[0], words[1], 2
+	case 0xd94f5690: // SDX75: EARFCN, PCI, RSRP integer, RSRP fraction, ...
+		if len(words) < 6 {
+			return qmdlReport{}, false
+		}
+		arfcn, pci, rsrpIndex, rsrpFractionIndex = words[0], words[1], 2, 3
+	default:
+		return qmdlReport{}, false
+	}
+
+	if requireValid && words[1] == 0 {
+		return qmdlReport{}, false
+	}
+	if arfcn == 0 || arfcn > 262143 || pci > 503 {
+		return qmdlReport{}, false
+	}
+	report := qmdlReport{rat: 1, pci: pci, arfcn: arfcn}
+	if rsrpIndex >= 0 {
+		if rsrpFractionIndex >= 0 {
+			report.rsrp, report.direct = decodeLTEFractionalRSRP(int32(words[rsrpIndex]), words[rsrpFractionIndex])
+		} else {
+			report.rsrp, report.direct = decodeLTERSRP(int32(words[rsrpIndex]))
 		}
 	}
+	return report, true
 }
 
 func decodeQMDLCandidate(logID uint32, words []uint32) (qmdlCandidate, bool) {
@@ -334,6 +390,13 @@ func decodeLTERSRP(raw int32) (float64, bool) {
 		return roundQMDL(float64(raw) / 10), true
 	}
 	return 0, false
+}
+
+func decodeLTEFractionalRSRP(integer int32, fraction uint32) (float64, bool) {
+	if integer < -140 || integer > -30 || fraction > 9999 {
+		return 0, false
+	}
+	return roundQMDL(float64(integer) - float64(fraction)/10000), true
 }
 
 func roundQMDL(value float64) float64 {
