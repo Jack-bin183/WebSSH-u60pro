@@ -1305,7 +1305,7 @@
     title="网络设置"
     width="min(760px, 96vw)"
     :close-on-click-modal="true"
-    class="wireless-dialog">
+    class="wireless-dialog network-settings-dialog">
     <div class="settings-panel">
       <section class="settings-section network-airplane-section">
         <div class="network-airplane-copy">
@@ -1447,6 +1447,24 @@
                 <template #default="scope">{{ formatNeighborSignal(scope.row.sinr, 'dB') }}</template>
               </el-table-column>
             </el-table>
+            <div class="neighbor-mobile-table" role="table" aria-label="当前服务小区">
+              <div class="neighbor-mobile-row neighbor-mobile-head" role="row">
+                <span role="columnheader">PCI</span>
+                <span role="columnheader">频段</span>
+                <span role="columnheader">ARFCN</span>
+                <span role="columnheader">RSRP</span>
+              </div>
+              <div
+                v-for="cell in neighborCellResult.serving"
+                :key="`serving-${cell.rat}-${cell.pci}-${cell.arfcn}`"
+                class="neighbor-mobile-row"
+                role="row">
+                <span role="cell">{{ formatNeighborValue(cell.pci) }}</span>
+                <span role="cell">{{ formatNeighborBand(cell) }}</span>
+                <span role="cell">{{ formatNeighborValue(cell.arfcn) }}</span>
+                <span role="cell">{{ formatNeighborSignal(cell.rsrp_median, 'dBm') }}</span>
+              </div>
+            </div>
           </div>
 
           <div class="neighbor-cell-table-block">
@@ -1482,6 +1500,29 @@
                 </template>
               </el-table-column>
             </el-table>
+            <div class="neighbor-mobile-table neighbor-mobile-neighbors" role="table" aria-label="检测到的邻区">
+              <div class="neighbor-mobile-row neighbor-mobile-head" role="row">
+                <span role="columnheader">PCI</span>
+                <span role="columnheader">频段</span>
+                <span role="columnheader">ARFCN</span>
+                <span role="columnheader">RSRP</span>
+              </div>
+              <button
+                v-for="cell in neighborCellResult.neighbors"
+                :key="`neighbor-${cell.rat}-${cell.pci}-${cell.arfcn}`"
+                type="button"
+                class="neighbor-mobile-row neighbor-mobile-button"
+                :aria-label="`填入邻区 PCI ${formatNeighborValue(cell.pci)}，频段 ${formatNeighborBand(cell)}，ARFCN ${formatNeighborValue(cell.arfcn)}`"
+                @click="fillNeighborCell(cell)">
+                <span>{{ formatNeighborValue(cell.pci) }}</span>
+                <span>{{ formatNeighborBand(cell) }}</span>
+                <span>{{ formatNeighborValue(cell.arfcn) }}</span>
+                <span>{{ formatNeighborSignal(cell.rsrp_median, 'dBm') }}</span>
+              </button>
+              <div v-if="neighborCellResult.neighbors.length === 0" class="neighbor-mobile-empty">
+                暂未检测到邻区，请稍后刷新
+              </div>
+            </div>
           </div>
         </div>
       </section>
@@ -9029,6 +9070,10 @@ onUnmounted(() => {
   background-color: rgba(34, 197, 94, 0.16);
 }
 
+.neighbor-mobile-table {
+  display: none;
+}
+
 .wireless-dialog .settings-panel .el-input__wrapper {
   background: rgba(10, 31, 68, 0.24);
   border: 1px solid rgba(255, 255, 255, 0.16);
@@ -9060,6 +9105,48 @@ onUnmounted(() => {
 }
 
 @media (max-width: 720px) {
+  .network-settings-dialog.el-dialog {
+    width: calc(100vw - 16px) !important;
+    height: calc(100dvh - 16px);
+    max-height: calc(100dvh - 16px);
+    margin: 8px auto !important;
+    border-radius: 14px !important;
+  }
+
+  .network-settings-dialog.el-dialog .el-dialog__header {
+    flex: 0 0 auto;
+    padding: 14px 16px 12px;
+  }
+
+  .network-settings-dialog.el-dialog .el-dialog__headerbtn {
+    top: 10px;
+    right: 8px;
+  }
+
+  .network-settings-dialog.el-dialog .el-dialog__body {
+    min-height: 0;
+    padding: 12px;
+    scrollbar-width: none;
+  }
+
+  .network-settings-dialog.el-dialog .el-dialog__body::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+  }
+
+  .network-settings-dialog.el-dialog .el-dialog__footer {
+    flex: 0 0 auto;
+    padding: 10px 12px;
+  }
+
+  .network-settings-dialog .settings-panel {
+    gap: 10px;
+  }
+
+  .network-settings-dialog .settings-section {
+    padding: 12px;
+  }
+
   .wifi-tuning-grid,
   .cell-lock-grid,
   .wifi-settings-grid {
@@ -9081,10 +9168,83 @@ onUnmounted(() => {
     align-items: flex-start;
   }
 
-  .neighbor-cell-table .neighbor-rat-column,
-  .neighbor-cell-table .neighbor-detail-column,
-  .neighbor-cell-table .neighbor-fill-column {
+  .neighbor-cell-table {
     display: none;
+  }
+
+  .neighbor-mobile-table {
+    display: block;
+    width: 100%;
+    overflow: hidden;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    background: rgba(10, 31, 68, 0.2);
+  }
+
+  .neighbor-mobile-row {
+    display: grid;
+    grid-template-columns: minmax(42px, 0.7fr) minmax(46px, 0.75fr) minmax(72px, 1.15fr) minmax(76px, 1.25fr);
+    align-items: center;
+    gap: 6px;
+    min-height: 42px;
+    padding: 0 10px;
+    color: rgba(255, 255, 255, 0.84);
+    font-size: 12px;
+    text-align: left;
+  }
+
+  .neighbor-mobile-row + .neighbor-mobile-row {
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+  }
+
+  .neighbor-mobile-row > span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .neighbor-mobile-head {
+    min-height: 36px;
+    color: rgba(255, 255, 255, 0.94);
+    background: rgba(96, 165, 250, 0.16);
+    font-weight: 700;
+  }
+
+  .neighbor-mobile-button {
+    width: 100%;
+    border-right: 0;
+    border-bottom: 0;
+    border-left: 0;
+    background: transparent;
+    font: inherit;
+    cursor: pointer;
+    touch-action: manipulation;
+  }
+
+  .neighbor-mobile-button:active,
+  .neighbor-mobile-button:focus-visible {
+    background: rgba(34, 197, 94, 0.16);
+    outline: none;
+  }
+
+  .neighbor-mobile-neighbors {
+    max-height: 280px;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .neighbor-mobile-neighbors .neighbor-mobile-head {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+  }
+
+  .neighbor-mobile-empty {
+    padding: 18px 10px;
+    color: rgba(255, 255, 255, 0.5);
+    font-size: 12px;
+    text-align: center;
   }
 
   .neighbor-cell-list-title {
