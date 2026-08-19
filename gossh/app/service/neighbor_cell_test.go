@@ -1,6 +1,28 @@
 package service
 
-import "testing"
+import (
+	"crypto/sha256"
+	"encoding/hex"
+	"testing"
+)
+
+func TestEmbeddedNeighborConfigMatchesValidatedMinimum(t *testing.T) {
+	const validatedSHA256 = "15b669eff11b53cf0fa461fe91b3c9b086912dee7a80a166c47d7d1b8c646c58"
+	if neighborConfigSHA256 != validatedSHA256 {
+		t.Fatalf("neighborConfigSHA256=%s, want validated minimum %s", neighborConfigSHA256, validatedSHA256)
+	}
+	data, err := neighborAssets.ReadFile("embed/qtrace.cfg")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(data) != 196 {
+		t.Fatalf("embedded qtrace.cfg bytes=%d, want 196", len(data))
+	}
+	sum := sha256.Sum256(data)
+	if got := hex.EncodeToString(sum[:]); got != validatedSHA256 {
+		t.Fatalf("embedded qtrace.cfg SHA-256=%s, want %s", got, validatedSHA256)
+	}
+}
 
 func TestParseNeighborBand(t *testing.T) {
 	tests := map[string]int{

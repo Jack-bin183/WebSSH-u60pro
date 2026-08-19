@@ -1413,8 +1413,9 @@
               size="small"
               :icon="RefreshIcon"
               :loading="neighborCellLoading"
+              :disabled="neighborCellRefreshDisabled"
               @click="loadNeighborCells">
-              刷新
+              {{ neighborCellLoading ? '采集中' : '刷新' }}
             </el-button>
           </div>
         </div>
@@ -2416,6 +2417,9 @@ const wifiSettingsDialogVisible = ref(false);
 const networkApplying = ref<NetworkApplyTarget>('');
 const wifiSettingsSaving = ref<WifiApplyTarget>('');
 const neighborCellLoading = ref(false);
+const neighborCellRefreshCooldown = ref(false);
+const neighborCellRefreshDisabled = computed(() => neighborCellLoading.value || neighborCellRefreshCooldown.value);
+let neighborCellRefreshCooldownTimer: ReturnType<typeof setTimeout> | null = null;
 const neighborCellError = ref('');
 const neighborCellResult = ref<NeighborCellResult>({
   engine: '',
@@ -3924,8 +3928,14 @@ async function openNetworkSettingsDialog() {
 }
 
 async function loadNeighborCells() {
-  if (neighborCellLoading.value) return;
+  if (neighborCellRefreshDisabled.value) return;
   neighborCellLoading.value = true;
+  neighborCellRefreshCooldown.value = true;
+  if (neighborCellRefreshCooldownTimer) clearTimeout(neighborCellRefreshCooldownTimer);
+  neighborCellRefreshCooldownTimer = setTimeout(() => {
+    neighborCellRefreshCooldown.value = false;
+    neighborCellRefreshCooldownTimer = null;
+  }, 1000);
   neighborCellError.value = '';
   try {
     const response = await axios.get('/api/neighbor/cells', { timeout: 20000 });
@@ -5660,6 +5670,10 @@ onMounted(() => {
 
 onUnmounted(() => {
   stopAutoRefresh();
+  if (neighborCellRefreshCooldownTimer) {
+    clearTimeout(neighborCellRefreshCooldownTimer);
+    neighborCellRefreshCooldownTimer = null;
+  }
   stopDevuiDownloadPoll();
   if (devuiDownloadClearTimer) {
     clearTimeout(devuiDownloadClearTimer);
@@ -8951,6 +8965,17 @@ onUnmounted(() => {
 .neighbor-cell-content {
   min-height: 72px;
   margin-top: 12px;
+}
+
+.neighbor-cell-content .el-loading-mask {
+  border-radius: 7px;
+  background: rgba(9, 27, 57, 0.72);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+}
+
+.neighbor-cell-content .el-loading-spinner .path {
+  stroke: #93c5fd;
 }
 
 .neighbor-cell-table-block + .neighbor-cell-table-block {

@@ -31,7 +31,7 @@ const (
 	neighborRingDir       = neighborBaseDir + "/ring"
 	neighborConfig        = "qtrace.cfg"
 	neighborLegacyParser  = "u60nbrqt_parser"
-	neighborConfigSHA256  = "ea57a5616a2a94171422452e93c8683671712d33d69ba39820f615af3be503d7"
+	neighborConfigSHA256  = "15b669eff11b53cf0fa461fe91b3c9b086912dee7a80a166c47d7d1b8c646c58"
 	neighborIdleTimeout   = 30 * time.Minute
 	neighborStaleTimeout  = 90 * time.Second
 	neighborParseTimeout  = 12 * time.Second
@@ -154,6 +154,7 @@ func NeighborCellHandler(c *gin.Context) {
 	snapshot, ubusErr := readNeighborUbus(c.Request.Context())
 	pipelineErr := ensureNeighborPipeline()
 	if pipelineErr == nil {
+		defer stopNeighborCollection("stopped: request completed")
 		waitForFirstQMDL(c.Request.Context(), 4*time.Second)
 	}
 
@@ -169,7 +170,9 @@ func NeighborCellHandler(c *gin.Context) {
 
 	if ubusErr == nil {
 		result := neighborResultFromUbus(snapshot)
-		result.Warning = pipelineErr.Error()
+		if pipelineErr != nil {
+			result.Warning = pipelineErr.Error()
+		}
 		c.JSON(http.StatusOK, gin.H{"code": 0, "msg": "ok", "data": result})
 		return
 	}
@@ -185,11 +188,15 @@ func NeighborCellHandler(c *gin.Context) {
 }
 
 func NeighborServiceStopHandler(c *gin.Context) {
-	neighborManager.Lock()
-	neighborManager.lastAccess = time.Time{}
-	stopped := stopManagedDiagLocked("stopped: requested by WebSSH")
-	neighborManager.Unlock()
+	stopped := stopNeighborCollection("stopped: requested by WebSSH")
 	c.JSON(http.StatusOK, gin.H{"code": 0, "msg": "ok", "data": gin.H{"stopped": stopped}})
+}
+
+func stopNeighborCollection(state string) bool {
+	neighborManager.Lock()
+	defer neighborManager.Unlock()
+	neighborManager.lastAccess = time.Time{}
+	return stopManagedDiagLocked(state)
 }
 
 func ensureNeighborPipeline() error {
