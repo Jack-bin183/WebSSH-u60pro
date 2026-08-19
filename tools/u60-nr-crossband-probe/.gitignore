@@ -1,0 +1,6 @@
+/build/
+/captures/
+/reports/
+/*.jsonl
+/*.csv
+/*.json

@@ -35,10 +35,13 @@ The project is designed for ARM64 Linux devices and stores its local data in SQL
 
 - Device uptime, connection state, battery, and network status
 - 4G / 5G signal details and carrier information
+- On-demand NR/LTE neighbor-cell measurement with one-click cell-lock form filling
 - UBUS JSON-RPC access for router-native data
 - WiFi power-saving / high-performance mode control
 - 2.4 GHz and 5 GHz radio controls
 - Network AMBR status
+
+The implementation status, modem-path findings, QSH minimization results, validated configs, and remaining limitations are summarized in [docs/u60-neighbor-cell-results.md](docs/u60-neighbor-cell-results.md).
 
 ### System Tools
 
