@@ -109,15 +109,34 @@ jobs:
           readelf -l webssh_${VERSION} | grep 'interpreter' || true
 
       # 8. UPX 压缩（可选）
+      # 直接使用官方静态包，避免 apt 软件源异常导致整个发布流程长时间阻塞。
       - name: Install UPX
+        timeout-minutes: 2
+        continue-on-error: true
+        env:
+          UPX_VERSION: 5.2.0
+          UPX_SHA256: 3db5d3294707439db97866feab8d75d800f028f48481a40547411824da4288a1
         run: |
-          sudo apt-get update
-          sudo apt-get install -y upx-ucl || sudo apt-get install -y upx
+          UPX_ARCHIVE="upx-${UPX_VERSION}-amd64_linux.tar.xz"
+          curl --fail --location \
+            --retry 3 --retry-delay 2 --connect-timeout 10 --max-time 60 \
+            "https://github.com/upx/upx/releases/download/v${UPX_VERSION}/${UPX_ARCHIVE}" \
+            --output "/tmp/${UPX_ARCHIVE}"
+          echo "${UPX_SHA256}  /tmp/${UPX_ARCHIVE}" | sha256sum --check --strict
+          tar -xJf "/tmp/${UPX_ARCHIVE}" -C /tmp
+          mkdir -p "${HOME}/.local/bin"
+          install -m 0755 "/tmp/upx-${UPX_VERSION}-amd64_linux/upx" "${HOME}/.local/bin/upx"
+          echo "${HOME}/.local/bin" >> "${GITHUB_PATH}"
 
       - name: Compress binary
+        timeout-minutes: 3
         run: |
           cd gossh
-          upx --best --lzma webssh_${VERSION} || true
+          if command -v upx >/dev/null 2>&1; then
+            upx --best --lzma "webssh_${VERSION}" || echo "UPX 压缩失败，继续发布未压缩文件"
+          else
+            echo "UPX 不可用，跳过压缩并继续发布"
+          fi
       
       # 9. 生成 version.txt
       - name: Generate version file
