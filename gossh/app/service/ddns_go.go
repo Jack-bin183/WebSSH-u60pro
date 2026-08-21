@@ -117,9 +117,11 @@ type ddnsGoYAMLConfig struct {
 		TTL           string `yaml:"ttl"`
 		HttpInterface string `yaml:"httpinterface"`
 	} `yaml:"dnsconf"`
-	WebhookURL         string `yaml:"webhookurl"`
-	WebhookRequestBody string `yaml:"webhookrequestbody"`
-	WebhookHeaders     string `yaml:"webhookheaders"`
+	Webhook struct {
+		WebhookURL         string `yaml:"webhookurl"`
+		WebhookRequestBody string `yaml:"webhookrequestbody"`
+		WebhookHeaders     string `yaml:"webhookheaders"`
+	} `yaml:"webhook"`
 }
 
 func defaultDDNSGoManagedConfig() ddnsGoManagedConfig {
@@ -149,7 +151,9 @@ func loadDDNSGoManagedConfig() (ddnsGoManagedConfig, error) {
 			config.Ipv6Enable, config.Ipv6GetType = item.Ipv6.Enable, item.Ipv6.GetType
 			config.Ipv6URL, config.Ipv6NetInterface, config.Ipv6Cmd = item.Ipv6.URL, item.Ipv6.NetInterface, item.Ipv6.Cmd
 			config.Ipv6Reg, config.Ipv6Domains = item.Ipv6.Ipv6Reg, strings.Join(item.Ipv6.Domains, "\n")
-			config.WebhookURL, config.WebhookRequestBody, config.WebhookHeaders = current.WebhookURL, current.WebhookRequestBody, current.WebhookHeaders
+			config.WebhookURL = current.Webhook.WebhookURL
+			config.WebhookRequestBody = current.Webhook.WebhookRequestBody
+			config.WebhookHeaders = current.Webhook.WebhookHeaders
 			return config, nil
 		}
 	} else if !os.IsNotExist(err) {
@@ -348,6 +352,67 @@ func extractDDNSGoBinary(archivePath, destPath string) error {
 
 func DDNSGoStatusHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"code": 0, "msg": "ok", "data": getDDNSGoStatus()})
+}
+
+func DDNSGoUpdateCheckHandler(c *gin.Context) {
+	status := getDDNSGoStatus()
+	if !status.Installed {
+		c.JSON(200, gin.H{"code": 1, "msg": "DDNS-GO 尚未安装"})
+		return
+	}
+	latest, _, err := latestDDNSGoAsset()
+	if err != nil {
+		c.JSON(200, gin.H{"code": 2, "msg": "检查更新失败: " + err.Error()})
+		return
+	}
+	currentVersion := strings.TrimPrefix(strings.TrimSpace(status.Version), "v")
+	latestVersion := strings.TrimPrefix(strings.TrimSpace(latest), "v")
+	c.JSON(200, gin.H{"code": 0, "msg": "ok", "data": gin.H{
+		"current": status.Version, "latest": latest, "has_update": currentVersion != latestVersion,
+	}})
+}
+
+func DDNSGoLogsHandler(c *gin.Context) {
+	file, err := os.Open(ddnsGoPath(ddnsGoLogName))
+	if os.IsNotExist(err) {
+		c.JSON(200, gin.H{"code": 0, "msg": "ok", "data": gin.H{"logs": []string{}}})
+		return
+	}
+	if err != nil {
+		c.JSON(200, gin.H{"code": 1, "msg": "读取日志失败: " + err.Error()})
+		return
+	}
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil {
+		c.JSON(200, gin.H{"code": 1, "msg": "读取日志失败: " + err.Error()})
+		return
+	}
+	const maxTail = int64(256 << 10)
+	start := info.Size() - maxTail
+	if start < 0 {
+		start = 0
+	}
+	if _, err := file.Seek(start, io.SeekStart); err != nil {
+		c.JSON(200, gin.H{"code": 1, "msg": "读取日志失败: " + err.Error()})
+		return
+	}
+	data, err := io.ReadAll(file)
+	if err != nil {
+		c.JSON(200, gin.H{"code": 1, "msg": "读取日志失败: " + err.Error()})
+		return
+	}
+	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
+	if start > 0 && len(lines) > 0 {
+		lines = lines[1:]
+	}
+	if len(lines) > 10 {
+		lines = lines[len(lines)-10:]
+	}
+	if len(lines) == 1 && lines[0] == "" {
+		lines = []string{}
+	}
+	c.JSON(200, gin.H{"code": 0, "msg": "ok", "data": gin.H{"logs": lines}})
 }
 
 func DDNSGoInstallHandler(c *gin.Context) {
@@ -625,5 +690,17 @@ func DDNSGoSaveConfigHandler(c *gin.Context) {
 		c.JSON(200, gin.H{"code": 10, "msg": "配置已生效，但保存管理副本失败: " + err.Error()})
 		return
 	}
-	c.JSON(200, gin.H{"code": 0, "msg": "DDNS-GO 配置已保存", "data": config})
+	message := "DDNS-GO 配置已保存"
+	if !temporaryStart {
+		if err := stopDDNSGo(); err != nil {
+			c.JSON(200, gin.H{"code": 11, "msg": "配置已保存，但停止 DDNS-GO 失败: " + err.Error()})
+			return
+		}
+		if err := startDDNSGo(); err != nil {
+			c.JSON(200, gin.H{"code": 11, "msg": "配置已保存，但重启 DDNS-GO 失败: " + err.Error()})
+			return
+		}
+		message = "DDNS-GO 配置已保存并重启"
+	}
+	c.JSON(200, gin.H{"code": 0, "msg": message, "data": config})
 }

@@ -1809,7 +1809,10 @@
               <div class="settings-section-title">DDNS-GO</div>
               <div class="system-tool-hint">当前配置来自 /data/plugins/ddns-go/.ddns_go_config.yaml，账号密码由主程序自动同步。</div>
             </div>
-            <el-button size="small" :loading="ddnsGo.loading" @click="loadDDNSGo">刷新</el-button>
+            <div class="system-tool-actions">
+              <el-button size="small" :loading="ddnsGo.logsLoading" @click="loadDDNSGoLogs">查看最后 10 条日志</el-button>
+              <el-button size="small" :loading="ddnsGo.loading" @click="loadDDNSGo">刷新</el-button>
+            </div>
           </div>
           <div class="sms-forward-switches">
             <div class="local-speedtest-option">
@@ -1878,8 +1881,8 @@
             </section>
           </div>
           <div class="system-tool-actions">
-            <el-button type="primary" :loading="ddnsGo.installing" @click="installDDNSGo">
-              {{ ddnsGo.installed ? '更新 DDNS-GO' : '安装 DDNS-GO' }}
+            <el-button type="primary" :loading="ddnsGo.installing" @click="checkOrInstallDDNSGo">
+              {{ ddnsGo.installed ? '检查更新' : '安装 DDNS-GO' }}
             </el-button>
             <el-button :disabled="!ddnsGo.installed" :loading="ddnsGo.configSaving" @click="saveDDNSGoConfig">保存配置</el-button>
           </div>
@@ -1887,6 +1890,10 @@
             {{ ddnsGo.installed ? `已安装 ${ddnsGo.version || ''}` : '尚未安装' }}；配置由主程序写入 DDNS-GO，无需打开或登录另一网页。
           </div>
           <div v-if="ddnsGo.status" class="local-speedtest-message">{{ ddnsGo.status }}</div>
+          <section v-if="ddnsGo.logsVisible" class="system-tool-section ddns-go-logs">
+            <div class="system-tool-section-title">最后 10 条日志</div>
+            <pre>{{ ddnsGo.logs || '暂无日志' }}</pre>
+          </section>
         </div>
       </el-tab-pane>
 
@@ -2692,6 +2699,9 @@ const ddnsGo = reactive({
   version: '',
   loading: false,
   installing: false,
+  logsLoading: false,
+  logsVisible: false,
+  logs: '',
   controlChanging: false,
   autostartChanging: false,
   configSaving: false,
@@ -2939,6 +2949,48 @@ async function installDDNSGo() {
   } finally {
     ddnsGo.installing = false;
     await loadDDNSGoStatus();
+  }
+}
+
+async function checkOrInstallDDNSGo() {
+  if (!ddnsGo.installed) {
+    await installDDNSGo();
+    return;
+  }
+  ddnsGo.installing = true;
+  ddnsGo.status = '正在检查 DDNS-GO 更新...';
+  try {
+    const res = await axios.get('/api/ddns-go/update-check');
+    if (res.data.code !== 0) throw new Error(res.data.msg || '检查更新失败');
+    const update = res.data.data || {};
+    if (!update.has_update) {
+      ddnsGo.status = `当前已是最新版 ${update.latest || ddnsGo.version}`;
+      ElMessage.success(ddnsGo.status);
+      return;
+    }
+    ddnsGo.status = `发现新版本 ${update.latest}，正在更新...`;
+  } catch (e: any) {
+    ddnsGo.status = '检查 DDNS-GO 更新失败: ' + (e?.message ?? e);
+    ElMessage.error(ddnsGo.status);
+    ddnsGo.installing = false;
+    return;
+  }
+  ddnsGo.installing = false;
+  await installDDNSGo();
+}
+
+async function loadDDNSGoLogs() {
+  ddnsGo.logsLoading = true;
+  try {
+    const res = await axios.get('/api/ddns-go/logs');
+    if (res.data.code !== 0) throw new Error(res.data.msg || '读取日志失败');
+    ddnsGo.logs = (res.data.data?.logs || []).join('\n');
+    ddnsGo.logsVisible = true;
+  } catch (e: any) {
+    ddnsGo.status = '读取 DDNS-GO 日志失败: ' + (e?.message ?? e);
+    ElMessage.error(ddnsGo.status);
+  } finally {
+    ddnsGo.logsLoading = false;
   }
 }
 
@@ -8045,6 +8097,20 @@ onUnmounted(() => {
   color: rgba(255, 255, 255, 0.58);
   font-size: 12px;
   line-height: 1.5;
+}
+
+.ddns-go-logs {
+  margin-top: 4px;
+}
+
+.ddns-go-logs pre {
+  max-height: 240px;
+  margin: 0;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: rgba(255, 255, 255, 0.78);
+  font: 12px/1.55 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
 
 .system-tool-hint {

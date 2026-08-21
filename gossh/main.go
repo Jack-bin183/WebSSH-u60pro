@@ -1067,6 +1067,8 @@ func main() {
 		auth.POST("/api/system/sms-forward/control", service.SystemSmsForwardControlHandler)
 		auth.POST("/api/system/sms-forward/autostart", service.SystemSmsForwardAutostartHandler)
 		auth.GET("/api/ddns-go/status", service.DDNSGoStatusHandler)
+		auth.GET("/api/ddns-go/update-check", service.DDNSGoUpdateCheckHandler)
+		auth.GET("/api/ddns-go/logs", service.DDNSGoLogsHandler)
 		auth.POST("/api/ddns-go/install", service.DDNSGoInstallHandler)
 		auth.POST("/api/ddns-go/control", service.DDNSGoControlHandler)
 		auth.POST("/api/ddns-go/autostart", service.DDNSGoAutostartHandler)
