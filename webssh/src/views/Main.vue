@@ -1813,6 +1813,9 @@
               <el-button size="small" :loading="ddnsGo.logsLoading" @click="toggleDDNSGoLogs">
                 {{ ddnsGo.logsVisible ? '隐藏日志' : '显示日志' }}
               </el-button>
+              <el-button size="small" @click="ddnsGo.settingsVisible = !ddnsGo.settingsVisible">
+                {{ ddnsGo.settingsVisible ? '收起设置' : '展开设置' }}
+              </el-button>
               <el-button size="small" :loading="ddnsGo.loading" @click="loadDDNSGo">刷新</el-button>
             </div>
           </div>
@@ -1836,6 +1839,11 @@
                 @change="(val: string | number | boolean) => setDDNSGoAutostart(Boolean(val))" />
             </div>
           </div>
+          <section v-if="ddnsGo.logsVisible" class="system-tool-section ddns-go-logs">
+            <div class="system-tool-section-title">最后 10 条日志</div>
+            <pre>{{ ddnsGo.logs || '暂无日志' }}</pre>
+          </section>
+          <div v-if="ddnsGo.settingsVisible" class="ddns-go-settings">
           <div class="sms-forward-grid">
             <section class="system-tool-section">
               <div class="system-tool-section-title">DNS 服务商</div>
@@ -1851,6 +1859,7 @@
             <section class="system-tool-section">
               <div class="system-tool-section-title">IPv4</div>
               <el-switch v-model="ddnsGo.Ipv4Enable" active-text="启用" inactive-text="关闭" />
+              <div v-if="ddnsGo.Ipv4Enable" class="ddns-go-section-fields">
               <el-select v-model="ddnsGo.Ipv4GetType" placeholder="获取方式">
                 <el-option label="通过公网 URL" value="url" />
                 <el-option label="通过网卡" value="netInterface" />
@@ -1860,10 +1869,12 @@
               <el-input v-if="ddnsGo.Ipv4GetType === 'netInterface'" v-model="ddnsGo.Ipv4NetInterface" placeholder="网卡名称，例如 eth0" clearable />
               <el-input v-if="ddnsGo.Ipv4GetType === 'cmd'" v-model="ddnsGo.Ipv4Cmd" placeholder="获取 IPv4 的命令" clearable />
               <el-input v-model="ddnsGo.Ipv4Domains" type="textarea" :rows="3" placeholder="IPv4 域名，每行一个" />
+              </div>
             </section>
             <section class="system-tool-section">
               <div class="system-tool-section-title">IPv6</div>
               <el-switch v-model="ddnsGo.Ipv6Enable" active-text="启用" inactive-text="关闭" />
+              <div v-if="ddnsGo.Ipv6Enable" class="ddns-go-section-fields">
               <el-select v-model="ddnsGo.Ipv6GetType" placeholder="获取方式">
                 <el-option label="通过公网 URL" value="url" />
                 <el-option label="通过网卡" value="netInterface" />
@@ -1874,12 +1885,16 @@
               <el-input v-if="ddnsGo.Ipv6GetType === 'cmd'" v-model="ddnsGo.Ipv6Cmd" placeholder="获取 IPv6 的命令" clearable />
               <el-input v-model="ddnsGo.Ipv6Reg" placeholder="IPv6 正则表达式，可选" clearable />
               <el-input v-model="ddnsGo.Ipv6Domains" type="textarea" :rows="3" placeholder="IPv6 域名，每行一个" />
+              </div>
             </section>
             <section class="system-tool-section">
               <div class="system-tool-section-title">Webhook（可选）</div>
+              <el-switch v-model="ddnsGo.WebhookEnabled" active-text="启用" inactive-text="关闭" />
+              <div v-if="ddnsGo.WebhookEnabled" class="ddns-go-section-fields">
               <el-input v-model="ddnsGo.WebhookURL" placeholder="Webhook URL" clearable />
               <el-input v-model="ddnsGo.WebhookHeaders" type="textarea" :rows="2" placeholder="请求头" />
               <el-input v-model="ddnsGo.WebhookRequestBody" type="textarea" :rows="3" placeholder="请求体" />
+              </div>
             </section>
           </div>
           <div class="system-tool-actions">
@@ -1892,10 +1907,7 @@
             {{ ddnsGo.installed ? `已安装 ${ddnsGo.version || ''}` : '尚未安装' }}；配置由主程序写入 DDNS-GO，无需打开或登录另一网页。
           </div>
           <div v-if="ddnsGo.status" class="local-speedtest-message">{{ ddnsGo.status }}</div>
-          <section v-if="ddnsGo.logsVisible" class="system-tool-section ddns-go-logs">
-            <div class="system-tool-section-title">最后 10 条日志</div>
-            <pre>{{ ddnsGo.logs || '暂无日志' }}</pre>
-          </section>
+          </div>
         </div>
       </el-tab-pane>
 
@@ -2711,6 +2723,7 @@ const ddnsGo = reactive({
   logsLoading: false,
   logsVisible: false,
   logs: '',
+  settingsVisible: false,
   controlChanging: false,
   autostartChanging: false,
   configSaving: false,
@@ -2738,6 +2751,7 @@ const ddnsGo = reactive({
   WebhookURL: '',
   WebhookRequestBody: '',
   WebhookHeaders: '',
+  WebhookEnabled: false,
 });
 const ddnsGoProviderOptions = [
   ['Cloudflare', 'cloudflare'], ['阿里云 DNS', 'alidns'], ['阿里云 ESA', 'aliesa'],
@@ -2922,6 +2936,7 @@ async function loadDDNSGoConfig() {
   const res = await axios.get('/api/ddns-go/config');
   if (res.data.code !== 0) throw new Error(res.data.msg || '读取配置失败');
   Object.assign(ddnsGo, res.data.data || {});
+  ddnsGo.WebhookEnabled = !!String(ddnsGo.WebhookURL || '').trim();
 }
 
 async function loadDDNSGo() {
@@ -3062,6 +3077,11 @@ async function saveDDNSGoConfig() {
       'TTL', 'WebhookURL', 'WebhookRequestBody', 'WebhookHeaders',
     ];
     const payload = Object.fromEntries(configKeys.map((key) => [key, (ddnsGo as any)[key]]));
+    if (!ddnsGo.WebhookEnabled) {
+      payload.WebhookURL = '';
+      payload.WebhookRequestBody = '';
+      payload.WebhookHeaders = '';
+    }
     const res = await axios.put('/api/ddns-go/config', payload);
     if (res.data.code !== 0) throw new Error(res.data.msg || '保存配置失败');
     Object.assign(ddnsGo, res.data.data || {});
@@ -8124,6 +8144,17 @@ onUnmounted(() => {
 }
 
 .ddns-go-logs {
+  margin-top: 4px;
+}
+
+.ddns-go-settings,
+.ddns-go-section-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.ddns-go-settings {
   margin-top: 4px;
 }
 
