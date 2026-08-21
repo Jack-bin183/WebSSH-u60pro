@@ -66,7 +66,7 @@
             <span class="quick-action-icon">ADB</span>
             <span class="quick-action-copy">
               <span class="quick-action-title">开启 ADB</span>
-              <span class="quick-action-subtitle">{{ usbStatus?.connect == 1 ? 'USB 已连接' : '等待 USB 连接' }}</span>
+              <span class="quick-action-subtitle">{{ usbStatus?.connect == 1 ? 'USB 已连接' : 'USB 未连接' }}</span>
             </span>
           </button>
 
@@ -6139,7 +6139,7 @@ onUnmounted(() => {
 .quick-actions-grid {
   display: grid;
   grid-auto-flow: column;
-  grid-auto-columns: minmax(144px, max-content);
+  grid-auto-columns: minmax(132px, max-content);
   align-items: center;
   justify-content: center;
   gap: 10px;
@@ -8077,33 +8077,12 @@ onUnmounted(() => {
 .system-tools-tabs :deep(.el-tabs__active-bar) {
   background: #7dd3fc;
 }
-.system-tools-tabs :deep(.el-tabs__nav-wrap) {
-  overflow-x: auto;
-  overflow-y: hidden;
-  scrollbar-width: none;
-  -webkit-overflow-scrolling: touch;
-  touch-action: pan-x;
-  cursor: grab;
-}
-.system-tools-tabs :deep(.el-tabs__nav-wrap:active) {
-  cursor: grabbing;
-}
-.system-tools-tabs :deep(.el-tabs__nav-wrap::-webkit-scrollbar) {
-  display: none;
-}
-.system-tools-tabs :deep(.el-tabs__nav-scroll) {
-  overflow: visible;
-}
 .system-tools-tabs :deep(.el-tabs__nav) {
   float: none;
   display: flex;
   width: max-content;
   min-width: 100%;
   justify-content: center;
-}
-.system-tools-tabs :deep(.el-tabs__nav-prev),
-.system-tools-tabs :deep(.el-tabs__nav-next) {
-  display: none;
 }
 .system-tool-panel {
   display: flex;
