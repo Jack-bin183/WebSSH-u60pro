@@ -1810,7 +1810,9 @@
               <div class="system-tool-hint">当前配置来自 /data/plugins/ddns-go/.ddns_go_config.yaml，账号密码由主程序自动同步。</div>
             </div>
             <div class="system-tool-actions">
-              <el-button size="small" :loading="ddnsGo.logsLoading" @click="loadDDNSGoLogs">查看最后 10 条日志</el-button>
+              <el-button size="small" :loading="ddnsGo.logsLoading" @click="toggleDDNSGoLogs">
+                {{ ddnsGo.logsVisible ? '隐藏日志' : '显示日志' }}
+              </el-button>
               <el-button size="small" :loading="ddnsGo.loading" @click="loadDDNSGo">刷新</el-button>
             </div>
           </div>
@@ -2513,6 +2515,13 @@ const refreshInterval2 = ref(5000);
 let refreshTimer: number | null = null;
 let refreshTimer2: number | null = null;
 
+function isInputControlFocused(): boolean {
+  const active = document.activeElement as HTMLElement | null;
+  if (!active) return false;
+  return active.matches('input, textarea, select, [contenteditable="true"], [role="textbox"]')
+    || !!active.closest('.el-input, .el-textarea, .el-select, .el-input-number');
+}
+
 // session 固定值（未登录）
 const SESSION_ID = '00000000000000000000000000000000'
 
@@ -2916,9 +2925,11 @@ async function loadDDNSGoConfig() {
 }
 
 async function loadDDNSGo() {
-  await Promise.all([loadDDNSGoStatus(), loadDDNSGoConfig().catch((e: any) => {
+  const tasks: Promise<unknown>[] = [loadDDNSGoStatus(), loadDDNSGoConfig().catch((e: any) => {
     ddnsGo.status = '读取 DDNS-GO 配置失败: ' + (e?.message ?? e);
-  })]);
+  })];
+  if (ddnsGo.logsVisible) tasks.push(loadDDNSGoLogs());
+  await Promise.all(tasks);
 }
 
 async function loadDDNSGoStatus() {
@@ -2980,6 +2991,7 @@ async function checkOrInstallDDNSGo() {
 }
 
 async function loadDDNSGoLogs() {
+  if (ddnsGo.logsLoading) return;
   ddnsGo.logsLoading = true;
   try {
     const res = await axios.get('/api/ddns-go/logs');
@@ -2992,6 +3004,14 @@ async function loadDDNSGoLogs() {
   } finally {
     ddnsGo.logsLoading = false;
   }
+}
+
+async function toggleDDNSGoLogs() {
+  if (ddnsGo.logsVisible) {
+    ddnsGo.logsVisible = false;
+    return;
+  }
+  await loadDDNSGoLogs();
 }
 
 async function setDDNSGoRunning(enabled: boolean) {
@@ -5089,7 +5109,11 @@ function toggleAutoRefresh() {
 function startAutoRefresh() {
   stopAutoRefresh();
   refreshTimer = window.setInterval(() => {
+    if (isInputControlFocused()) return;
     fetchAllData();
+    if (systemToolsDialogVisible.value && systemToolsActiveTab.value === 'ddnsGo' && ddnsGo.logsVisible) {
+      loadDDNSGoLogs();
+    }
   }, refreshInterval.value);
 }
 
