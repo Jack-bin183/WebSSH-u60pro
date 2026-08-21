@@ -72,13 +72,13 @@
 
           <button
             class="quick-action-button network-action-button"
-            :class="{ active: networkLockTags.length > 0 }"
-            @click="openNetworkSettingsDialog"
+            :class="{ active: networkLockTags.length > 0 || wifiInfo.highPerformance }"
+            @click="openCommunicationSettingsDialog"
           >
-            <span class="quick-action-icon">Net</span>
+            <span class="quick-action-icon">Com</span>
             <span class="quick-action-copy">
-              <span class="quick-action-title">网络设置</span>
-              <span class="quick-action-subtitle">{{ networkSettingsSummary }}</span>
+              <span class="quick-action-title">通信设置</span>
+              <span class="quick-action-subtitle">数据/Wi-Fi</span>
             </span>
             <span v-if="networkLockTags.length" class="network-lock-tags" aria-label="网络状态标签">
               <span
@@ -111,19 +111,6 @@
             <span class="quick-action-copy">
               <span class="quick-action-title">Mihomo</span>
               <span class="quick-action-subtitle">{{ mmStatus.running ? '代理运行中' : '代理已停止' }}</span>
-            </span>
-          </button>
-
-          <button
-            class="wifi-mode-button"
-            :class="{ active: wifiInfo.highPerformance, saving: wifiSettingsSaving }"
-            :disabled="wifiSettingsSaving !== ''"
-            @click="openWifiSettingsDialog"
-          >
-            <span class="wifi-mode-icon">{{ wifiInfo.highPerformance ? 'HP' : 'PS' }}</span>
-            <span class="wifi-mode-copy">
-              <span class="wifi-mode-title">WiFi 设置</span>
-              <span class="wifi-mode-action">{{ wifiSettingsSummary }}</span>
             </span>
           </button>
 
@@ -1299,13 +1286,15 @@
     </template>
   </el-dialog>
 
-  <!-- ───────── 网络设置弹窗 ───────── -->
+  <!-- ───────── 通信设置弹窗 ───────── -->
   <el-dialog
-    v-model="networkSettingsDialogVisible"
-    title="网络设置"
+    v-model="communicationSettingsDialogVisible"
+    title="通信设置"
     width="min(760px, 96vw)"
     :close-on-click-modal="true"
     class="wireless-dialog network-settings-dialog">
+    <el-tabs v-model="communicationSettingsActiveTab" class="system-tools-tabs">
+    <el-tab-pane label="数据设置" name="data">
     <div class="settings-panel">
       <section class="settings-section network-airplane-section">
         <div class="network-airplane-copy">
@@ -1527,18 +1516,8 @@
         </div>
       </section>
     </div>
-    <template #footer>
-      <el-button @click="networkSettingsDialogVisible = false">关闭</el-button>
-    </template>
-  </el-dialog>
-
-  <!-- ───────── WiFi 设置弹窗 ───────── -->
-  <el-dialog
-    v-model="wifiSettingsDialogVisible"
-    title="WiFi 设置"
-    width="min(720px, 96vw)"
-    :close-on-click-modal="true"
-    class="wireless-dialog">
+    </el-tab-pane>
+    <el-tab-pane label="Wi-Fi 设置" name="wifi">
     <div class="settings-panel">
 
       <div class="wifi-settings-grid">
@@ -1626,8 +1605,10 @@
         </div>
       </section>
     </div>
+    </el-tab-pane>
+    </el-tabs>
     <template #footer>
-      <el-button @click="wifiSettingsDialogVisible = false">关闭</el-button>
+      <el-button @click="communicationSettingsDialogVisible = false">关闭</el-button>
     </template>
   </el-dialog>
 
@@ -1751,14 +1732,18 @@
             <section class="system-tool-section">
               <div class="system-tool-section-title">Bark</div>
               <el-switch v-model="smsForward.barkEnabled" active-text="启用" inactive-text="关闭" />
+              <div v-if="smsForward.barkEnabled" class="system-tool-toggle-fields">
               <el-input v-model="smsForward.barkUrl" placeholder="https://api.day.app/你的Key?icon=https://..." clearable />
               <el-input v-model="smsForward.barkGroup" placeholder="分组 group，可选" clearable />
+              </div>
             </section>
             <section class="system-tool-section">
               <div class="system-tool-section-title">TG Bot</div>
               <el-switch v-model="smsForward.tgEnabled" active-text="启用" inactive-text="关闭" />
+              <div v-if="smsForward.tgEnabled" class="system-tool-toggle-fields">
               <el-input v-model="smsForward.tgBotToken" placeholder="Bot Token" clearable show-password />
               <el-input v-model="smsForward.tgChatId" placeholder="Chat ID" clearable />
+              </div>
             </section>
           </div>
           <div class="system-tool-actions">
@@ -1940,21 +1925,22 @@
                 @change="(val: string | number | boolean) => setDevuiAutostart(Boolean(val))" />
             </div>
           </div>
-          <div class="devui-status-grid">
-            <div class="devui-patch-status">
-              <span>补丁文件</span>
-              <strong>{{ devui.binaryExists ? '已下载' : '未下载' }}</strong>
+          <div class="devui-patch-block">
+            <div class="local-speedtest-option devui-patch-status">
+              <span>补丁文件 · {{ devui.binaryExists ? '已下载' : '未下载' }}</span>
               <el-button size="small" :loading="devui.downloading" @click="downloadDevuiBinary">
                 {{ devui.binaryExists ? '重新下载' : '下载' }}
               </el-button>
-              <div v-if="devui.downloadState === 'downloading' || devui.downloadState === 'done' || devui.downloadState === 'failed'" class="devui-download-progress">
+            </div>
+            <div v-if="devui.downloadState === 'downloading' || devui.downloadState === 'done' || devui.downloadState === 'failed'" class="devui-download-progress">
                 <el-progress
                   :percentage="devui.downloadPercent"
                   :status="devui.downloadState === 'failed' ? 'exception' : (devui.downloadState === 'done' ? 'success' : undefined)"
                   :stroke-width="8" />
                 <div>{{ devui.downloadMsg || '正在下载...' }} · {{ formatSpeedTestBytes(devui.downloaded) }} / {{ devui.downloadTotal > 0 ? formatSpeedTestBytes(devui.downloadTotal) : '未知大小' }}</div>
-              </div>
             </div>
+          </div>
+          <div class="devui-status-grid">
             <div><span>挂载状态</span><strong>{{ devui.mounted ? '已挂载' : '未挂载' }}</strong></div>
             <div class="devui-data-status">
               <span>数据接口</span>
@@ -2569,8 +2555,8 @@ interface DeviceSettings {
   wifi_performance: string;
 }
 
-const networkSettingsDialogVisible = ref(false);
-const wifiSettingsDialogVisible = ref(false);
+const communicationSettingsDialogVisible = ref(false);
+const communicationSettingsActiveTab = ref<'data' | 'wifi'>('data');
 const networkApplying = ref<NetworkApplyTarget>('');
 const wifiSettingsSaving = ref<WifiApplyTarget>('');
 const neighborCellLoading = ref(false);
@@ -2621,12 +2607,6 @@ function normalizeWifiTxPower(value: unknown): number {
   return wifiTxPowerOptions.some(item => item.value === n) ? n : 100;
 }
 
-const networkSettingsSummary = computed(() => {
-  if (airplaneMode.enabled) return '飞行模式';
-  const opt = netSelectOptions.find(item => item.value === (networkForm.net_select || d.value?.net_select));
-  return opt?.label || '点击配置';
-});
-
 const hasLTEBandLock = computed(() => isPartialBandLockActive(d.value?.lte_band, lteBandOptions));
 const hasNRBandLock = computed(() => isPartialBandLockActive(currentNRBandLockValue(), nrBandOptions));
 const hasBandLock = computed(() => hasLTEBandLock.value || hasNRBandLock.value);
@@ -2639,10 +2619,6 @@ const networkLockTags = computed(() => {
   if (hasBandLock.value) tags.push('锁频');
   if (hasCellLock.value) tags.push('锁小区');
   return tags;
-});
-
-const wifiSettingsSummary = computed(() => {
-  return wifiSettingsSaving.value ? '应用中...' : `${wifiInfo.value.wifiStatus24 ? '2.4G开' : '2.4G关'} / ${wifiInfo.value.wifiStatus5 ? '5G开' : '5G关'}`;
 });
 
 type SystemToolsTab = 'speedtest' | 'sms' | 'ddnsGo' | 'devui' | 'serialUpdate' | 'rcLocal';
@@ -2936,7 +2912,6 @@ async function loadDDNSGoConfig() {
   const res = await axios.get('/api/ddns-go/config');
   if (res.data.code !== 0) throw new Error(res.data.msg || '读取配置失败');
   Object.assign(ddnsGo, res.data.data || {});
-  ddnsGo.WebhookEnabled = !!String(ddnsGo.WebhookURL || '').trim();
 }
 
 async function loadDDNSGo() {
@@ -3074,14 +3049,9 @@ async function saveDDNSGoConfig() {
       'Name', 'DnsName', 'DnsID', 'DnsSecret', 'DnsExtParam', 'HttpInterface',
       'Ipv4Cmd', 'Ipv4Domains', 'Ipv4Enable', 'Ipv4GetType', 'Ipv4NetInterface', 'Ipv4Url',
       'Ipv6Cmd', 'Ipv6Domains', 'Ipv6Enable', 'Ipv6GetType', 'Ipv6NetInterface', 'Ipv6Reg', 'Ipv6Url',
-      'TTL', 'WebhookURL', 'WebhookRequestBody', 'WebhookHeaders',
+      'TTL', 'WebhookURL', 'WebhookRequestBody', 'WebhookHeaders', 'WebhookEnabled',
     ];
     const payload = Object.fromEntries(configKeys.map((key) => [key, (ddnsGo as any)[key]]));
-    if (!ddnsGo.WebhookEnabled) {
-      payload.WebhookURL = '';
-      payload.WebhookRequestBody = '';
-      payload.WebhookHeaders = '';
-    }
     const res = await axios.put('/api/ddns-go/config', payload);
     if (res.data.code !== 0) throw new Error(res.data.msg || '保存配置失败');
     Object.assign(ddnsGo, res.data.data || {});
@@ -4299,12 +4269,15 @@ async function netSelectChange(value: string) {
   await applyNetworkMode();
 }
 
-async function openNetworkSettingsDialog() {
+async function openCommunicationSettingsDialog() {
   await fetchAllData();
   syncNetworkFormFromCurrent();
-  networkSettingsDialogVisible.value = true;
+  syncWifiFormFromCurrent();
+  communicationSettingsActiveTab.value = 'data';
+  communicationSettingsDialogVisible.value = true;
   loadAirplaneMode();
   void loadNeighborCells();
+  loadWifiSettings();
 }
 
 async function loadNeighborCells() {
@@ -4387,12 +4360,6 @@ function fillNeighborCell(cell: NeighborCellData) {
   }
 
   ElMessage.warning(`暂不支持 ${rat || '未知制式'} 邻区锁定`);
-}
-
-function openWifiSettingsDialog() {
-  syncWifiFormFromCurrent();
-  wifiSettingsDialogVisible.value = true;
-  loadWifiSettings();
 }
 
 function syncNetworkFormFromCurrent() {
@@ -5982,8 +5949,8 @@ function resetDialogScrollLock() {
   html.style.overflow = '';
 }
 
-watch([deviceDialogVisible, mmDialogVisible, networkSettingsDialogVisible, wifiSettingsDialogVisible, systemToolsDialogVisible], ([deviceOpen, mmOpen, networkOpen, wifiOpen, toolsOpen]) => {
-  const anyOpen = deviceOpen || mmOpen || networkOpen || wifiOpen || toolsOpen;
+watch([deviceDialogVisible, mmDialogVisible, communicationSettingsDialogVisible, systemToolsDialogVisible], ([deviceOpen, mmOpen, communicationOpen, toolsOpen]) => {
+  const anyOpen = deviceOpen || mmOpen || communicationOpen || toolsOpen;
   const body = document.body;
   const html = document.documentElement;
   if (anyOpen) {
@@ -8148,7 +8115,8 @@ onUnmounted(() => {
 }
 
 .ddns-go-settings,
-.ddns-go-section-fields {
+.ddns-go-section-fields,
+.system-tool-toggle-fields {
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -8173,11 +8141,14 @@ onUnmounted(() => {
 }
 .devui-status-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
+  align-items: stretch;
 }
 .devui-status-grid > div {
   min-width: 0;
+  height: 100%;
+  box-sizing: border-box;
   padding: 10px 12px;
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 8px;
@@ -8197,12 +8168,21 @@ onUnmounted(() => {
   line-height: 1.4;
   overflow-wrap: anywhere;
 }
+.devui-patch-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: calc((100% - 10px) / 2);
+}
+.devui-patch-status {
+  width: 100%;
+  box-sizing: border-box;
+}
 .devui-patch-status .el-button {
-  margin-top: 8px;
   margin-left: 0;
 }
 .devui-download-progress {
-  margin-top: 8px;
+  padding: 0 12px;
 }
 .devui-download-progress div {
   margin-top: 4px;
@@ -8222,12 +8202,12 @@ onUnmounted(() => {
 }
 .devui-wallpaper-row {
   display: grid;
-  grid-template-columns: repeat(2, 120px) minmax(0, 1fr);
+  grid-template-columns: repeat(2, minmax(0, 120px));
   gap: 14px;
-  align-items: end;
+  justify-content: center;
 }
 .devui-wallpaper-preview {
-  width: 120px;
+  width: 100%;
   aspect-ratio: 320 / 456;
   position: relative;
   display: flex;
@@ -8259,9 +8239,11 @@ onUnmounted(() => {
   object-fit: cover;
 }
 .devui-wallpaper-actions {
+  grid-column: 1 / -1;
   min-width: 0;
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 10px;
   flex-wrap: wrap;
 }
@@ -8343,12 +8325,14 @@ onUnmounted(() => {
   .devui-status-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+  .devui-patch-block {
+    width: 100%;
+  }
   .serial-update-status-grid {
     grid-template-columns: 1fr;
   }
   .devui-wallpaper-row {
-    grid-template-columns: 1fr;
-    justify-items: start;
+    grid-template-columns: repeat(2, minmax(0, 120px));
   }
   .devui-wallpaper-actions {
     width: 100%;

@@ -86,6 +86,7 @@ type ddnsGoManagedConfig struct {
 	WebhookURL         string `json:"WebhookURL"`
 	WebhookRequestBody string `json:"WebhookRequestBody"`
 	WebhookHeaders     string `json:"WebhookHeaders"`
+	WebhookEnabled     bool   `json:"WebhookEnabled"`
 }
 
 type ddnsGoYAMLConfig struct {
@@ -135,6 +136,20 @@ func defaultDDNSGoManagedConfig() ddnsGoManagedConfig {
 
 func loadDDNSGoManagedConfig() (ddnsGoManagedConfig, error) {
 	config := defaultDDNSGoManagedConfig()
+	managedLoaded := false
+	if data, err := os.ReadFile(ddnsGoPath(ddnsGoManagedName)); err == nil {
+		if err := json.Unmarshal(data, &config); err != nil {
+			return config, fmt.Errorf("读取 DDNS-GO 管理配置失败: %w", err)
+		}
+		var fields map[string]json.RawMessage
+		_ = json.Unmarshal(data, &fields)
+		if _, exists := fields["WebhookEnabled"]; !exists {
+			config.WebhookEnabled = config.WebhookURL != ""
+		}
+		managedLoaded = true
+	} else if !os.IsNotExist(err) {
+		return config, err
+	}
 	if data, err := os.ReadFile(ddnsGoPath(ddnsGoConfigName)); err == nil {
 		var current ddnsGoYAMLConfig
 		if err := yaml.Unmarshal(data, &current); err != nil {
@@ -151,23 +166,16 @@ func loadDDNSGoManagedConfig() (ddnsGoManagedConfig, error) {
 			config.Ipv6Enable, config.Ipv6GetType = item.Ipv6.Enable, item.Ipv6.GetType
 			config.Ipv6URL, config.Ipv6NetInterface, config.Ipv6Cmd = item.Ipv6.URL, item.Ipv6.NetInterface, item.Ipv6.Cmd
 			config.Ipv6Reg, config.Ipv6Domains = item.Ipv6.Ipv6Reg, strings.Join(item.Ipv6.Domains, "\n")
-			config.WebhookURL = current.Webhook.WebhookURL
-			config.WebhookRequestBody = current.Webhook.WebhookRequestBody
-			config.WebhookHeaders = current.Webhook.WebhookHeaders
+			if current.Webhook.WebhookURL != "" || !managedLoaded {
+				config.WebhookURL = current.Webhook.WebhookURL
+				config.WebhookRequestBody = current.Webhook.WebhookRequestBody
+				config.WebhookHeaders = current.Webhook.WebhookHeaders
+				config.WebhookEnabled = current.Webhook.WebhookURL != ""
+			}
 			return config, nil
 		}
 	} else if !os.IsNotExist(err) {
 		return config, err
-	}
-	data, err := os.ReadFile(ddnsGoPath(ddnsGoManagedName))
-	if os.IsNotExist(err) {
-		return config, nil
-	}
-	if err != nil {
-		return config, err
-	}
-	if err := json.Unmarshal(data, &config); err != nil {
-		return config, fmt.Errorf("读取 DDNS-GO 管理配置失败: %w", err)
 	}
 	return config, nil
 }
@@ -653,11 +661,15 @@ func DDNSGoSaveConfigHandler(c *gin.Context) {
 		c.JSON(200, gin.H{"code": 6, "msg": err.Error()})
 		return
 	}
+	webhookURL, webhookBody, webhookHeaders := config.WebhookURL, config.WebhookRequestBody, config.WebhookHeaders
+	if !config.WebhookEnabled {
+		webhookURL, webhookBody, webhookHeaders = "", "", ""
+	}
 	payload := map[string]any{
 		"Username": u.Name, "Password": u.Pwd, "Lang": "zh-cn",
 		"NotAllowWanAccess": true,
-		"WebhookURL":        config.WebhookURL, "WebhookRequestBody": config.WebhookRequestBody,
-		"WebhookHeaders": config.WebhookHeaders, "DnsConf": []ddnsGoManagedConfig{config},
+		"WebhookURL":        webhookURL, "WebhookRequestBody": webhookBody,
+		"WebhookHeaders": webhookHeaders, "DnsConf": []ddnsGoManagedConfig{config},
 	}
 	body, err := json.Marshal(payload)
 	if err != nil {
