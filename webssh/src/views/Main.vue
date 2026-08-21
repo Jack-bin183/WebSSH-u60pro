@@ -6520,10 +6520,39 @@ onUnmounted(() => {
 .content {
   display: grid;
   width: 100%;
-  grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   justify-content: center;
   gap: 24px;
   align-items: stretch; /* 卡片等高 */
+}
+
+/* 桌面顶部框：状态占第一行，四个主要操作占第二行 */
+@media (min-width: 769px) {
+  .page-header {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 14px 24px;
+    align-items: center;
+  }
+
+  .controls {
+    display: contents;
+  }
+
+  .top-status-controls {
+    grid-column: 2;
+    grid-row: 1;
+    justify-self: end;
+  }
+
+  .quick-actions-grid {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    grid-auto-flow: row;
+    grid-auto-columns: auto;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    width: 100%;
+  }
 }
 
 /* 卡片样式 */
