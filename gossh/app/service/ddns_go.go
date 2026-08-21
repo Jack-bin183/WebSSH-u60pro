@@ -21,12 +21,14 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"gopkg.in/yaml.v3"
 )
 
 const (
 	ddnsGoDir             = "/data/plugins/ddns-go"
 	ddnsGoBinaryName      = "ddns-go"
-	ddnsGoConfigName      = "config.yaml"
+	ddnsGoConfigName      = ".ddns_go_config.yaml"
 	ddnsGoManagedName     = "webssh-config.json"
 	ddnsGoPIDName         = "ddns-go.pid"
 	ddnsGoLogName         = "ddns-go.log"
@@ -86,6 +88,40 @@ type ddnsGoManagedConfig struct {
 	WebhookHeaders     string `json:"WebhookHeaders"`
 }
 
+type ddnsGoYAMLConfig struct {
+	DnsConf []struct {
+		Name string `yaml:"name"`
+		Ipv4 struct {
+			Enable       bool     `yaml:"enable"`
+			GetType      string   `yaml:"gettype"`
+			URL          string   `yaml:"url"`
+			NetInterface string   `yaml:"netinterface"`
+			Cmd          string   `yaml:"cmd"`
+			Domains      []string `yaml:"domains"`
+		} `yaml:"ipv4"`
+		Ipv6 struct {
+			Enable       bool     `yaml:"enable"`
+			GetType      string   `yaml:"gettype"`
+			URL          string   `yaml:"url"`
+			NetInterface string   `yaml:"netinterface"`
+			Cmd          string   `yaml:"cmd"`
+			Ipv6Reg      string   `yaml:"ipv6reg"`
+			Domains      []string `yaml:"domains"`
+		} `yaml:"ipv6"`
+		DNS struct {
+			Name     string `yaml:"name"`
+			ID       string `yaml:"id"`
+			Secret   string `yaml:"secret"`
+			ExtParam string `yaml:"extparam"`
+		} `yaml:"dns"`
+		TTL           string `yaml:"ttl"`
+		HttpInterface string `yaml:"httpinterface"`
+	} `yaml:"dnsconf"`
+	WebhookURL         string `yaml:"webhookurl"`
+	WebhookRequestBody string `yaml:"webhookrequestbody"`
+	WebhookHeaders     string `yaml:"webhookheaders"`
+}
+
 func defaultDDNSGoManagedConfig() ddnsGoManagedConfig {
 	return ddnsGoManagedConfig{
 		Name: "默认", DnsName: "cloudflare", TTL: "300",
@@ -97,6 +133,28 @@ func defaultDDNSGoManagedConfig() ddnsGoManagedConfig {
 
 func loadDDNSGoManagedConfig() (ddnsGoManagedConfig, error) {
 	config := defaultDDNSGoManagedConfig()
+	if data, err := os.ReadFile(ddnsGoPath(ddnsGoConfigName)); err == nil {
+		var current ddnsGoYAMLConfig
+		if err := yaml.Unmarshal(data, &current); err != nil {
+			return config, fmt.Errorf("读取 DDNS-GO 当前配置失败: %w", err)
+		}
+		if len(current.DnsConf) > 0 {
+			item := current.DnsConf[0]
+			config.Name, config.DnsName = item.Name, item.DNS.Name
+			config.DnsID, config.DnsSecret, config.DnsExtParam = item.DNS.ID, item.DNS.Secret, item.DNS.ExtParam
+			config.TTL, config.HttpInterface = item.TTL, item.HttpInterface
+			config.Ipv4Enable, config.Ipv4GetType = item.Ipv4.Enable, item.Ipv4.GetType
+			config.Ipv4URL, config.Ipv4NetInterface, config.Ipv4Cmd = item.Ipv4.URL, item.Ipv4.NetInterface, item.Ipv4.Cmd
+			config.Ipv4Domains = strings.Join(item.Ipv4.Domains, "\n")
+			config.Ipv6Enable, config.Ipv6GetType = item.Ipv6.Enable, item.Ipv6.GetType
+			config.Ipv6URL, config.Ipv6NetInterface, config.Ipv6Cmd = item.Ipv6.URL, item.Ipv6.NetInterface, item.Ipv6.Cmd
+			config.Ipv6Reg, config.Ipv6Domains = item.Ipv6.Ipv6Reg, strings.Join(item.Ipv6.Domains, "\n")
+			config.WebhookURL, config.WebhookRequestBody, config.WebhookHeaders = current.WebhookURL, current.WebhookRequestBody, current.WebhookHeaders
+			return config, nil
+		}
+	} else if !os.IsNotExist(err) {
+		return config, err
+	}
 	data, err := os.ReadFile(ddnsGoPath(ddnsGoManagedName))
 	if os.IsNotExist(err) {
 		return config, nil

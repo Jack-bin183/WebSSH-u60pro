@@ -4,6 +4,7 @@ go 1.24.0
 
 require (
 	github.com/glebarez/go-sqlite v1.21.2
+	gopkg.in/yaml.v3 v3.0.1
 	modernc.org/sqlite v1.23.1
 )
 

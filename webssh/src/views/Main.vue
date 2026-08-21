@@ -1807,9 +1807,29 @@
           <div class="system-tool-header">
             <div>
               <div class="settings-section-title">DDNS-GO</div>
-              <div class="system-tool-hint">安装和配置均保存在 /data/plugins/ddns-go/，账号密码由主程序自动同步。</div>
+              <div class="system-tool-hint">当前配置来自 /data/plugins/ddns-go/.ddns_go_config.yaml，账号密码由主程序自动同步。</div>
             </div>
             <el-button size="small" :loading="ddnsGo.loading" @click="loadDDNSGo">刷新</el-button>
+          </div>
+          <div class="sms-forward-switches">
+            <div class="local-speedtest-option">
+              <span>运行服务</span>
+              <el-switch
+                :model-value="ddnsGo.running"
+                :disabled="!ddnsGo.installed"
+                :loading="ddnsGo.controlChanging"
+                active-text="开" inactive-text="关"
+                @change="(val: string | number | boolean) => setDDNSGoRunning(Boolean(val))" />
+            </div>
+            <div class="local-speedtest-option">
+              <span>开机自启</span>
+              <el-switch
+                :model-value="ddnsGo.autostartEnabled"
+                :disabled="!ddnsGo.installed"
+                :loading="ddnsGo.autostartChanging"
+                active-text="开" inactive-text="关"
+                @change="(val: string | number | boolean) => setDDNSGoAutostart(Boolean(val))" />
+            </div>
           </div>
           <div class="sms-forward-grid">
             <section class="system-tool-section">
@@ -1856,26 +1876,6 @@
               <el-input v-model="ddnsGo.WebhookHeaders" type="textarea" :rows="2" placeholder="请求头" />
               <el-input v-model="ddnsGo.WebhookRequestBody" type="textarea" :rows="3" placeholder="请求体" />
             </section>
-          </div>
-          <div class="sms-forward-switches">
-            <div class="local-speedtest-option">
-              <span>运行服务</span>
-              <el-switch
-                :model-value="ddnsGo.running"
-                :disabled="!ddnsGo.installed"
-                :loading="ddnsGo.controlChanging"
-                active-text="开" inactive-text="关"
-                @change="(val: string | number | boolean) => setDDNSGoRunning(Boolean(val))" />
-            </div>
-            <div class="local-speedtest-option">
-              <span>开机自启</span>
-              <el-switch
-                :model-value="ddnsGo.autostartEnabled"
-                :disabled="!ddnsGo.installed"
-                :loading="ddnsGo.autostartChanging"
-                active-text="开" inactive-text="关"
-                @change="(val: string | number | boolean) => setDDNSGoAutostart(Boolean(val))" />
-            </div>
           </div>
           <div class="system-tool-actions">
             <el-button type="primary" :loading="ddnsGo.installing" @click="installDDNSGo">
