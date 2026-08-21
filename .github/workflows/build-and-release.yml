@@ -62,6 +62,8 @@ jobs:
         uses: actions/setup-node@v7
         with:
           node-version: 26
+          cache: npm
+          cache-dependency-path: webssh/package-lock.json
 
       # 4. 构建前端
       - name: Build webssh
