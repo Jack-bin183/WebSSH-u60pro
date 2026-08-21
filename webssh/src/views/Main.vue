@@ -1916,7 +1916,10 @@
           </div>
           <div class="devui-patch-block">
             <div class="local-speedtest-option devui-patch-status">
-              <span>补丁文件 · {{ devui.binaryExists ? '已下载' : '未下载' }}</span>
+              <div class="devui-patch-copy">
+                <span>补丁文件</span>
+                <span class="devui-patch-value">{{ devui.binaryExists ? '已下载' : '未下载' }}</span>
+              </div>
               <el-button size="small" :loading="devui.downloading" @click="downloadDevuiBinary">
                 {{ devui.binaryExists ? '重新下载' : '下载' }}
               </el-button>
@@ -8124,6 +8127,11 @@ onUnmounted(() => {
 .ordered-system-tools-tabs :deep(.el-tabs__item.is-active) {
   box-shadow: inset 0 -2px #7dd3fc;
 }
+.ordered-system-tools-tabs :deep(.el-tabs__item) {
+  /* Element Plus 会清除首尾标签的一侧 padding；视觉重排后会造成中间间距异常 */
+  flex: 0 0 auto;
+  padding: 0 20px !important;
+}
 .ordered-system-tools-tabs :deep(#tab-devui) { order: 1; }
 .ordered-system-tools-tabs :deep(#tab-sms) { order: 2; }
 .ordered-system-tools-tabs :deep(#tab-ddnsGo) { order: 3; }
@@ -8224,6 +8232,7 @@ onUnmounted(() => {
 }
 .devui-status-grid > div {
   min-width: 0;
+  min-height: 60px;
   height: 100%;
   box-sizing: border-box;
   padding: 10px 12px;
@@ -8242,6 +8251,7 @@ onUnmounted(() => {
   margin-top: 4px;
   color: rgba(255, 255, 255, 0.88);
   font-size: 13px;
+  font-weight: 400;
   line-height: 1.4;
   overflow-wrap: anywhere;
 }
@@ -8251,9 +8261,29 @@ onUnmounted(() => {
   gap: 8px;
   width: calc((100% - 10px) / 2);
 }
-.devui-patch-status {
+.local-speedtest-option.devui-patch-status {
   width: 100%;
+  min-height: 60px;
   box-sizing: border-box;
+  padding: 10px 12px;
+}
+.devui-patch-copy {
+  min-width: 0;
+}
+.devui-patch-copy > span:first-child {
+  display: block;
+  color: rgba(255, 255, 255, 0.56);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.4;
+}
+.devui-patch-copy .devui-patch-value {
+  display: block;
+  margin-top: 4px;
+  color: rgba(255, 255, 255, 0.88);
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.4;
 }
 .devui-patch-status .el-button {
   margin-left: 0;
