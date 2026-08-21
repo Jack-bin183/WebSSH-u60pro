@@ -6042,8 +6042,10 @@ onUnmounted(() => {
 <style scoped>
 /* 基础样式 */
 .page {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1600px);
   justify-content: center;
+  width: 100%;
   color: white;
   min-height: 100vh;
   min-height: 100dvh;
@@ -7525,10 +7527,9 @@ onUnmounted(() => {
   }
 }
 .child {
-  flex: 0 1 1600px;
   width: 100%;
   max-width: 1600px;
-  margin: 0 auto;
+  margin-inline: auto;
   padding: 16px;
   box-sizing: border-box;
 }
@@ -9505,10 +9506,8 @@ onUnmounted(() => {
 
 @media (max-width: 720px) {
   .network-settings-dialog.el-dialog {
-    width: calc(100vw - 16px) !important;
-    height: calc(100dvh - 16px);
-    max-height: calc(100dvh - 16px);
-    margin: 8px auto !important;
+    height: auto;
+    max-height: 80vh;
     border-radius: 14px !important;
   }
 
