@@ -1840,7 +1840,7 @@
             </div>
           </div>
           <section v-if="ddnsGo.logsVisible" class="system-tool-section ddns-go-logs">
-            <div class="system-tool-section-title">最后 10 条日志</div>
+            <div class="system-tool-section-title">最后 5 条日志</div>
             <pre>{{ ddnsGo.logs || '暂无日志' }}</pre>
           </section>
           <div v-if="ddnsGo.settingsVisible" class="ddns-go-settings">
@@ -8159,9 +8159,7 @@ onUnmounted(() => {
 }
 
 .ddns-go-logs pre {
-  max-height: 240px;
   margin: 0;
-  overflow: auto;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   color: rgba(255, 255, 255, 0.78);

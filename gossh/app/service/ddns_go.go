@@ -406,8 +406,8 @@ func DDNSGoLogsHandler(c *gin.Context) {
 	if start > 0 && len(lines) > 0 {
 		lines = lines[1:]
 	}
-	if len(lines) > 10 {
-		lines = lines[len(lines)-10:]
+	if len(lines) > 5 {
+		lines = lines[len(lines)-5:]
 	}
 	if len(lines) == 1 && lines[0] == "" {
 		lines = []string{}
