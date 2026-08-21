@@ -705,7 +705,7 @@
             </div>
 
 
-            <div class="device-item">
+            <div class="device-item device-temp-item">
               <div class="health-card temp-health-card">
                 <div class="health-title">温度状态</div>
 
@@ -748,7 +748,7 @@
               </div>
             </div>
 
-            <div class="device-item">
+            <div class="device-item device-memory-item">
               <div class="health-card memory-health-card">
                 <div class="health-title">内存使用</div>
 
@@ -974,51 +974,40 @@
         <div class="card-content">
           <div class="interface-grid">
 
-            <div class="interface-section" v-if="wwanInfo?.ipv4_address">
+            <div class="wan-interface-pair">
               <h4>WAN IPv4</h4>
-              <div class="info-grid-compact">
-                <div class="info-item">
-                  <span class="label">IP 地址</span>
-                  <span class="value">{{ wwanInfo?.ipv4_address || '-' }}</span>
-                </div>
-                <div class="info-item">
-                  <span class="label">网关</span>
-                  <span class="value">{{ wwanInfo?.ipv4_gateway || '-' }}</span>
-                </div>
-                <div class="info-item">
-                  <span class="label">DNS 服务器</span>
-                  <span class="value">{{
-                    wanData['dns-server']?.join('\n') || '-'
-                  }}</span>
-                </div>
-                <div class="info-item">
-                  <span class="label">运行时间</span>
-                  <span class="value">{{ formatUptime(wanData.uptime) }}</span>
-                </div>
-              </div>
-            </div>
-
-            <div class="interface-section" v-if="wwanInfo?.ipv6_address !== '0'">
               <h4>WAN IPv6</h4>
-              <div class="info-grid-compact">
-                <div class="info-item">
-                  <span class="label">IPv6 地址</span>
-                  <span class="value">{{ wwanInfo?.ipv6_address || '-' }}</span>
-                </div>
-                <div class="info-item">
-                  <span class="label">网关</span>
-                  <span class="value">{{ wwanInfo?.ipv6_gateway || '-' }}</span>
-                </div>
-                <div class="info-item">
-                  <span class="label">DNS 服务器</span>
-                  <span class="value">{{
-                    wan6Data['dns-server']?.join('\n') || '-'
-                  }}</span>
-                </div>
-                <div class="info-item">
-                  <span class="label">运行时间</span>
-                  <span class="value">{{ formatUptime(wan6Data.uptime) }}</span>
-                </div>
+              <div class="info-item">
+                <span class="label">IP 地址</span>
+                <span class="value">{{ wwanInfo?.ipv4_address || '-' }}</span>
+              </div>
+              <div class="info-item">
+                <span class="label">IPv6 地址</span>
+                <span class="value">{{ wwanInfo?.ipv6_address && wwanInfo.ipv6_address !== '0' ? wwanInfo.ipv6_address : '-' }}</span>
+              </div>
+              <div class="info-item">
+                <span class="label">网关</span>
+                <span class="value">{{ wwanInfo?.ipv4_gateway || '-' }}</span>
+              </div>
+              <div class="info-item">
+                <span class="label">网关</span>
+                <span class="value">{{ wwanInfo?.ipv6_gateway || '-' }}</span>
+              </div>
+              <div class="info-item">
+                <span class="label">DNS 服务器</span>
+                <span class="value">{{ wanData['dns-server']?.join('\n') || '-' }}</span>
+              </div>
+              <div class="info-item">
+                <span class="label">DNS 服务器</span>
+                <span class="value">{{ wan6Data['dns-server']?.join('\n') || '-' }}</span>
+              </div>
+              <div class="info-item">
+                <span class="label">运行时间</span>
+                <span class="value">{{ formatUptime(wanData.uptime) }}</span>
+              </div>
+              <div class="info-item">
+                <span class="label">运行时间</span>
+                <span class="value">{{ formatUptime(wan6Data.uptime) }}</span>
               </div>
             </div>
             
@@ -6150,7 +6139,7 @@ onUnmounted(() => {
 .quick-actions-grid {
   display: grid;
   grid-auto-flow: column;
-  grid-auto-columns: minmax(132px, max-content);
+  grid-auto-columns: minmax(144px, max-content);
   align-items: center;
   justify-content: center;
   gap: 10px;
@@ -6609,6 +6598,12 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+.device-memory-item {
+  order: 2;
+}
+.device-temp-item {
+  order: 3;
 }
 .health-card {
   position: relative;          /* 相对定位，避免被父元素限制 */
@@ -7264,7 +7259,8 @@ onUnmounted(() => {
   margin-bottom: 0;
 }
 
-.interface-section h4 {
+.interface-section h4,
+.wan-interface-pair h4 {
   font-size: 16px;
   font-weight: 600;
   color: rgba(255, 255, 255, 0.9);
@@ -7276,8 +7272,29 @@ onUnmounted(() => {
 /* 网络接口状态网格布局 */
 .interface-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  grid-template-columns: 1fr;
   gap: 24px;
+}
+
+.wan-interface-pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.wan-interface-pair h4 {
+  min-width: 0;
+}
+
+.wan-interface-pair .info-item {
+  min-width: 0;
+  height: 100%;
+  box-sizing: border-box;
+}
+
+.wan-interface-pair .value {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .info-grid-compact {
@@ -8059,6 +8076,34 @@ onUnmounted(() => {
 }
 .system-tools-tabs :deep(.el-tabs__active-bar) {
   background: #7dd3fc;
+}
+.system-tools-tabs :deep(.el-tabs__nav-wrap) {
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-x;
+  cursor: grab;
+}
+.system-tools-tabs :deep(.el-tabs__nav-wrap:active) {
+  cursor: grabbing;
+}
+.system-tools-tabs :deep(.el-tabs__nav-wrap::-webkit-scrollbar) {
+  display: none;
+}
+.system-tools-tabs :deep(.el-tabs__nav-scroll) {
+  overflow: visible;
+}
+.system-tools-tabs :deep(.el-tabs__nav) {
+  float: none;
+  display: flex;
+  width: max-content;
+  min-width: 100%;
+  justify-content: center;
+}
+.system-tools-tabs :deep(.el-tabs__nav-prev),
+.system-tools-tabs :deep(.el-tabs__nav-next) {
+  display: none;
 }
 .system-tool-panel {
   display: flex;
