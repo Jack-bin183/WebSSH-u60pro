@@ -69,6 +69,11 @@ func JWTAuth() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		auth := c.Request.Header.Get("Authorization")
 		if len(auth) == 0 {
+			if cookie, err := c.Request.Cookie("webssh_token"); err == nil {
+				auth = cookie.Value
+			}
+		}
+		if len(auth) == 0 {
 			// Websocket SSE 从请求参数取
 			auth = c.Query("Authorization")
 		}

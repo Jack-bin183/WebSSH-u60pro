@@ -1,0 +1,499 @@
+package service
+
+import (
+	"archive/tar"
+	"bytes"
+	"compress/gzip"
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"gossh/app/model"
+	"gossh/gin"
+	"io"
+	"log/slog"
+	"net/http"
+	"net/http/httputil"
+	"net/url"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"sync"
+	"syscall"
+	"time"
+)
+
+const (
+	ddnsGoDir             = "/data/plugins/ddns-go"
+	ddnsGoBinaryName      = "ddns-go"
+	ddnsGoConfigName      = "config.yaml"
+	ddnsGoPIDName         = "ddns-go.pid"
+	ddnsGoLogName         = "ddns-go.log"
+	ddnsGoAutostartMarker = ".autostart"
+	ddnsGoListen          = "127.0.0.1:9876"
+	ddnsGoUpstream        = "http://127.0.0.1:9876"
+	ddnsGoProxyPrefix     = "/api/ddns-go/proxy"
+	ddnsGoReleaseAPI      = "https://api.github.com/repos/jeessy2/ddns-go/releases/latest"
+)
+
+var ddnsGoMu sync.Mutex
+
+type ddnsGoStatus struct {
+	Installed        bool   `json:"installed"`
+	Running          bool   `json:"running"`
+	PID              int    `json:"pid"`
+	Version          string `json:"version"`
+	Dir              string `json:"dir"`
+	ConfigPath       string `json:"config_path"`
+	AutostartEnabled bool   `json:"autostart_enabled"`
+	Listen           string `json:"listen"`
+}
+
+type ddnsGoRelease struct {
+	TagName string `json:"tag_name"`
+	Assets  []struct {
+		Name string `json:"name"`
+		URL  string `json:"browser_download_url"`
+	} `json:"assets"`
+}
+
+func ddnsGoPath(name string) string { return filepath.Join(ddnsGoDir, name) }
+
+func ddnsGoProcess() (int, bool) {
+	data, err := os.ReadFile(ddnsGoPath(ddnsGoPIDName))
+	if err != nil {
+		return 0, false
+	}
+	pid, err := strconv.Atoi(strings.TrimSpace(string(data)))
+	if err != nil || pid <= 0 {
+		return 0, false
+	}
+	process, err := os.FindProcess(pid)
+	if err != nil || process.Signal(syscall.Signal(0)) != nil {
+		_ = os.Remove(ddnsGoPath(ddnsGoPIDName))
+		return 0, false
+	}
+	if executable, err := os.Readlink(filepath.Join("/proc", strconv.Itoa(pid), "exe")); err == nil {
+		if filepath.Clean(executable) != filepath.Clean(ddnsGoPath(ddnsGoBinaryName)) {
+			_ = os.Remove(ddnsGoPath(ddnsGoPIDName))
+			return 0, false
+		}
+	}
+	return pid, true
+}
+
+func getDDNSGoStatus() ddnsGoStatus {
+	_, binErr := os.Stat(ddnsGoPath(ddnsGoBinaryName))
+	pid, running := ddnsGoProcess()
+	version := ""
+	if binErr == nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		if out, err := exec.CommandContext(ctx, ddnsGoPath(ddnsGoBinaryName), "-v").CombinedOutput(); err == nil {
+			version = strings.TrimSpace(string(out))
+		}
+	}
+	_, autoErr := os.Stat(ddnsGoPath(ddnsGoAutostartMarker))
+	return ddnsGoStatus{
+		Installed: binErr == nil, Running: running, PID: pid, Version: version,
+		Dir: ddnsGoDir, ConfigPath: ddnsGoPath(ddnsGoConfigName),
+		AutostartEnabled: autoErr == nil, Listen: ddnsGoListen,
+	}
+}
+
+func startDDNSGo() error {
+	ddnsGoMu.Lock()
+	defer ddnsGoMu.Unlock()
+	if _, running := ddnsGoProcess(); running {
+		return nil
+	}
+	bin := ddnsGoPath(ddnsGoBinaryName)
+	if _, err := os.Stat(bin); err != nil {
+		return errors.New("ddns-go 尚未安装")
+	}
+	if err := os.MkdirAll(ddnsGoDir, 0755); err != nil {
+		return err
+	}
+	logFile, err := os.OpenFile(ddnsGoPath(ddnsGoLogName), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
+	if err != nil {
+		return fmt.Errorf("打开 ddns-go 日志失败: %w", err)
+	}
+	cmd := exec.Command(bin, "-l", ddnsGoListen, "-c", ddnsGoPath(ddnsGoConfigName))
+	cmd.Dir = ddnsGoDir
+	cmd.Stdout = logFile
+	cmd.Stderr = logFile
+	if err := cmd.Start(); err != nil {
+		_ = logFile.Close()
+		return fmt.Errorf("启动 ddns-go 失败: %w", err)
+	}
+	_ = logFile.Close()
+	if err := os.WriteFile(ddnsGoPath(ddnsGoPIDName), []byte(strconv.Itoa(cmd.Process.Pid)), 0600); err != nil {
+		_ = cmd.Process.Kill()
+		return err
+	}
+	pid := cmd.Process.Pid
+	go func() {
+		_ = cmd.Wait()
+		ddnsGoMu.Lock()
+		defer ddnsGoMu.Unlock()
+		data, err := os.ReadFile(ddnsGoPath(ddnsGoPIDName))
+		if err == nil && strings.TrimSpace(string(data)) == strconv.Itoa(pid) {
+			_ = os.Remove(ddnsGoPath(ddnsGoPIDName))
+		}
+	}()
+	return nil
+}
+
+func stopDDNSGo() error {
+	ddnsGoMu.Lock()
+	defer ddnsGoMu.Unlock()
+	pid, running := ddnsGoProcess()
+	if !running {
+		return nil
+	}
+	process, err := os.FindProcess(pid)
+	if err == nil {
+		_ = process.Signal(os.Interrupt)
+		for i := 0; i < 20; i++ {
+			time.Sleep(100 * time.Millisecond)
+			if _, alive := ddnsGoProcess(); !alive {
+				return nil
+			}
+		}
+		_ = process.Kill()
+	}
+	_ = os.Remove(ddnsGoPath(ddnsGoPIDName))
+	return nil
+}
+
+func latestDDNSGoAsset() (string, string, error) {
+	resp, err := mihomoHTTPClient().Get(ddnsGoReleaseAPI)
+	if err != nil {
+		return "", "", err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return "", "", fmt.Errorf("GitHub releases 返回 HTTP %d", resp.StatusCode)
+	}
+	var release ddnsGoRelease
+	if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
+		return "", "", err
+	}
+	for _, asset := range release.Assets {
+		if strings.HasSuffix(asset.Name, "_linux_arm64.tar.gz") {
+			return release.TagName, asset.URL, nil
+		}
+	}
+	return "", "", errors.New("最新版本中未找到 linux_arm64 安装包")
+}
+
+func extractDDNSGoBinary(archivePath, destPath string) error {
+	file, err := os.Open(archivePath)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	gz, err := gzip.NewReader(file)
+	if err != nil {
+		return err
+	}
+	defer gz.Close()
+	tr := tar.NewReader(gz)
+	for {
+		header, err := tr.Next()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			return err
+		}
+		if header.Typeflag != tar.TypeReg || filepath.Base(header.Name) != ddnsGoBinaryName {
+			continue
+		}
+		out, err := os.OpenFile(destPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0755)
+		if err != nil {
+			return err
+		}
+		_, copyErr := io.Copy(out, tr)
+		closeErr := out.Close()
+		if copyErr != nil {
+			return copyErr
+		}
+		return closeErr
+	}
+	return errors.New("安装包内未找到 ddns-go 二进制")
+}
+
+func DDNSGoStatusHandler(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"code": 0, "msg": "ok", "data": getDDNSGoStatus()})
+}
+
+func DDNSGoInstallHandler(c *gin.Context) {
+	if err := os.MkdirAll(ddnsGoDir, 0755); err != nil {
+		c.JSON(200, gin.H{"code": 1, "msg": err.Error()})
+		return
+	}
+	version, assetURL, err := latestDDNSGoAsset()
+	if err != nil {
+		c.JSON(200, gin.H{"code": 2, "msg": "获取最新版本失败: " + err.Error()})
+		return
+	}
+	tmp := ddnsGoPath("ddns-go.download.tar.gz")
+	defer os.Remove(tmp)
+	if err := mihomoDownloadFile(c.Request.Context(), assetURL, tmp, nil); err != nil {
+		c.JSON(200, gin.H{"code": 3, "msg": "下载安装包失败: " + err.Error()})
+		return
+	}
+	wasRunning := getDDNSGoStatus().Running
+	_ = stopDDNSGo()
+	tmpBin := ddnsGoPath("ddns-go.install.tmp")
+	defer os.Remove(tmpBin)
+	if err := extractDDNSGoBinary(tmp, tmpBin); err != nil {
+		c.JSON(200, gin.H{"code": 4, "msg": "解压安装包失败: " + err.Error()})
+		return
+	}
+	if err := os.Rename(tmpBin, ddnsGoPath(ddnsGoBinaryName)); err != nil {
+		c.JSON(200, gin.H{"code": 5, "msg": "安装二进制失败: " + err.Error()})
+		return
+	}
+	configWasEmpty := true
+	if info, err := os.Stat(ddnsGoPath(ddnsGoConfigName)); err == nil && info.Size() > 0 {
+		configWasEmpty = false
+	}
+	if _, err := os.Stat(ddnsGoPath(ddnsGoConfigName)); os.IsNotExist(err) {
+		if err := os.WriteFile(ddnsGoPath(ddnsGoConfigName), nil, 0600); err != nil {
+			c.JSON(200, gin.H{"code": 6, "msg": "创建配置文件失败: " + err.Error()})
+			return
+		}
+	}
+	if wasRunning || configWasEmpty {
+		if err := startDDNSGo(); err != nil {
+			c.JSON(200, gin.H{"code": 7, "msg": err.Error()})
+			return
+		}
+	}
+	if configWasEmpty {
+		var user model.WebUser
+		u, err := user.FindByID(c.GetUint("uid"))
+		if err != nil {
+			_ = stopDDNSGo()
+			c.JSON(200, gin.H{"code": 8, "msg": "安装完成，但读取当前用户失败"})
+			return
+		}
+		if _, err := loginDDNSGo(u.Name, u.Pwd); err != nil {
+			_ = stopDDNSGo()
+			c.JSON(200, gin.H{"code": 9, "msg": "安装完成，但同步主程序账号失败: " + err.Error()})
+			return
+		}
+		if !wasRunning {
+			_ = stopDDNSGo()
+		}
+	}
+	c.JSON(200, gin.H{"code": 0, "msg": "ddns-go " + version + " 安装完成", "data": getDDNSGoStatus()})
+}
+
+func DDNSGoControlHandler(c *gin.Context) {
+	var req struct {
+		Action string `json:"action"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(200, gin.H{"code": 1, "msg": "参数错误"})
+		return
+	}
+	var err error
+	switch req.Action {
+	case "start":
+		err = startDDNSGo()
+	case "stop":
+		err = stopDDNSGo()
+	case "restart":
+		err = stopDDNSGo()
+		if err == nil {
+			err = startDDNSGo()
+		}
+	default:
+		err = errors.New("不支持的操作")
+	}
+	if err != nil {
+		c.JSON(200, gin.H{"code": 2, "msg": err.Error(), "data": getDDNSGoStatus()})
+		return
+	}
+	c.JSON(200, gin.H{"code": 0, "msg": "ok", "data": getDDNSGoStatus()})
+}
+
+func DDNSGoAutostartHandler(c *gin.Context) {
+	var req struct {
+		Enabled bool `json:"enabled"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(200, gin.H{"code": 1, "msg": "参数错误"})
+		return
+	}
+	if err := os.MkdirAll(ddnsGoDir, 0755); err != nil {
+		c.JSON(200, gin.H{"code": 2, "msg": err.Error()})
+		return
+	}
+	marker := ddnsGoPath(ddnsGoAutostartMarker)
+	var err error
+	if req.Enabled {
+		err = os.WriteFile(marker, []byte(""), 0644)
+	} else {
+		err = os.Remove(marker)
+		if os.IsNotExist(err) {
+			err = nil
+		}
+	}
+	if err != nil {
+		c.JSON(200, gin.H{"code": 2, "msg": err.Error()})
+		return
+	}
+	c.JSON(200, gin.H{"code": 0, "msg": "ok", "data": getDDNSGoStatus()})
+}
+
+func InitDDNSGoAutostart() {
+	if _, err := os.Stat(ddnsGoPath(ddnsGoAutostartMarker)); err != nil {
+		return
+	}
+	go func() {
+		if err := startDDNSGo(); err != nil {
+			slog.Warn("ddns-go autostart failed", "err", err)
+		}
+	}()
+}
+
+// SyncDDNSGoPassword keeps ddns-go's own credential aligned without exposing
+// the clear-text password to the browser. The binary performs its own hashing.
+func SyncDDNSGoPassword(username, password string) error {
+	status := getDDNSGoStatus()
+	if !status.Installed {
+		return nil
+	}
+	cmd := exec.Command(ddnsGoPath(ddnsGoBinaryName), "-resetPassword", password, "-c", ddnsGoPath(ddnsGoConfigName))
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("同步 ddns-go 用户 %s 的密码失败: %s: %w", username, strings.TrimSpace(string(out)), err)
+	}
+	result := string(out)
+	if !strings.Contains(result, "重置成功") && !strings.Contains(result, "reset successfully") {
+		return fmt.Errorf("ddns-go 拒绝同步密码: %s", strings.TrimSpace(result))
+	}
+	if !status.Running {
+		return nil
+	}
+	if err := stopDDNSGo(); err != nil {
+		return err
+	}
+	return startDDNSGo()
+}
+
+func loginDDNSGo(username, password string) (*http.Cookie, error) {
+	body, _ := json.Marshal(map[string]string{"Username": username, "Password": password})
+	client := &http.Client{Timeout: 5 * time.Second}
+	var resp *http.Response
+	var err error
+	for i := 0; i < 20; i++ {
+		var req *http.Request
+		req, err = http.NewRequest(http.MethodPost, ddnsGoUpstream+"/loginFunc", bytes.NewReader(body))
+		if err == nil {
+			req.Header.Set("Content-Type", "application/json")
+			req.Header.Set("Referer", ddnsGoUpstream+"/")
+			resp, err = client.Do(req)
+		}
+		if err == nil {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	for _, cookie := range resp.Cookies() {
+		if cookie.Name == "token" {
+			return cookie, nil
+		}
+	}
+	data, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+	return nil, fmt.Errorf("ddns-go 登录失败: %s", strings.TrimSpace(string(data)))
+}
+
+func DDNSGoSessionHandler(c *gin.Context) {
+	if !getDDNSGoStatus().Running {
+		c.JSON(200, gin.H{"code": 1, "msg": "请先启动 ddns-go"})
+		return
+	}
+	var user model.WebUser
+	u, err := user.FindByID(c.GetUint("uid"))
+	if err != nil {
+		c.JSON(200, gin.H{"code": 2, "msg": "读取当前用户失败"})
+		return
+	}
+	cookie, err := loginDDNSGo(u.Name, u.Pwd)
+	if err != nil {
+		c.JSON(200, gin.H{"code": 3, "msg": err.Error()})
+		return
+	}
+	cookie.Path = ddnsGoProxyPrefix + "/"
+	cookie.HttpOnly = true
+	cookie.SameSite = http.SameSiteStrictMode
+	http.SetCookie(c.Writer, cookie)
+	auth := c.Request.Header.Get("Authorization")
+	http.SetCookie(c.Writer, &http.Cookie{Name: "webssh_token", Value: auth, Path: ddnsGoProxyPrefix + "/", HttpOnly: true, SameSite: http.SameSiteStrictMode, MaxAge: 7200})
+	c.JSON(200, gin.H{"code": 0, "msg": "ok", "data": gin.H{"url": ddnsGoProxyPrefix + "/"}})
+}
+
+func DDNSGoProxyHandler(c *gin.Context) {
+	path := c.Param("path")
+	if path == "" {
+		path = "/"
+	}
+	// DDNS-GO 的保存页包含自己的账号字段。始终由主程序覆盖这两个字段，
+	// 防止嵌入页把凭据改成与当前主程序用户不一致。
+	if path == "/save" && c.Request.Method == http.MethodPost {
+		var payload map[string]any
+		body, err := io.ReadAll(io.LimitReader(c.Request.Body, 4<<20))
+		c.Request.Body = io.NopCloser(bytes.NewReader(body))
+		if err == nil && json.Unmarshal(body, &payload) == nil {
+			var user model.WebUser
+			if u, findErr := user.FindByID(c.GetUint("uid")); findErr == nil {
+				payload["Username"] = u.Name
+				payload["Password"] = u.Pwd
+				if rewritten, marshalErr := json.Marshal(payload); marshalErr == nil {
+					c.Request.Body = io.NopCloser(bytes.NewReader(rewritten))
+					c.Request.ContentLength = int64(len(rewritten))
+					c.Request.Header.Set("Content-Length", strconv.Itoa(len(rewritten)))
+				}
+			}
+		}
+	}
+	target, _ := url.Parse(ddnsGoUpstream)
+	proxy := httputil.NewSingleHostReverseProxy(target)
+	original := proxy.Director
+	proxy.Director = func(req *http.Request) {
+		original(req)
+		req.URL.Path = path
+		req.Host = target.Host
+	}
+	proxy.ModifyResponse = func(resp *http.Response) error {
+		if location := resp.Header.Get("Location"); strings.HasPrefix(location, "/") {
+			resp.Header.Set("Location", ddnsGoProxyPrefix+location)
+		}
+		cookies := resp.Cookies()
+		if len(cookies) > 0 {
+			resp.Header.Del("Set-Cookie")
+			for _, cookie := range cookies {
+				cookie.Path = ddnsGoProxyPrefix + "/"
+				cookie.HttpOnly = true
+				cookie.SameSite = http.SameSiteStrictMode
+				resp.Header.Add("Set-Cookie", cookie.String())
+			}
+		}
+		return nil
+	}
+	proxy.ErrorHandler = func(w http.ResponseWriter, _ *http.Request, err error) {
+		http.Error(w, "ddns-go 代理失败: "+err.Error(), http.StatusBadGateway)
+	}
+	proxy.ServeHTTP(c.Writer, c.Request)
+}

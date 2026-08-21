@@ -59,6 +59,12 @@ func ModifyPasswd(c *gin.Context) {
 		return
 	}
 
+	if err := SyncDDNSGoPassword(user.Name, pwd.Pwd); err != nil {
+		slog.Warn("同步 ddns-go 密码失败", "err_msg", err.Error())
+		c.JSON(200, gin.H{"code": 0, "msg": "主程序密码已更新，但 ddns-go 密码同步失败: " + err.Error()})
+		return
+	}
+
 	c.JSON(200, gin.H{"code": 0, "msg": "更新密码成功"})
 }
 

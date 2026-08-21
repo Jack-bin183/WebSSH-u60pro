@@ -1513,7 +1513,11 @@ function modifyPassword() {
 
   axios.patch<ResponseData>("/api/user/pwd", { "pwd": data.new_pwd_one }).then((ret) => {
     if (ret.data.code === 0) {
-      ElMessage.success("密码修改成功");
+	  if (ret.data.msg && ret.data.msg !== "更新密码成功") {
+		ElMessage.warning(ret.data.msg);
+	  } else {
+		ElMessage.success("密码修改成功");
+	  }
     } else {
       ElMessage.error("密码修改失败");
     }
@@ -2919,18 +2923,26 @@ const terminalBackground = computed(() => {
 }
 
 .top-nav-header {
-  position: relative;
+  position: fixed;
+  top: var(--app-safe-top, 0px);
+  right: 0;
+  left: 0;
   height: fit-content;
   padding:
-    calc(8px + var(--app-safe-top, 0px))
+    8px
     calc(12px + var(--app-safe-right, 0px))
     10px
     calc(12px + var(--app-safe-left, 0px));
+  box-sizing: border-box;
   background:#315697;
   box-shadow: 0 10px 30px rgba(15, 23, 42, 0.22);
   backdrop-filter: blur(14px);
   overflow: visible;
   z-index: 2000;
+}
+
+:global(html.ios-pwa .top-nav-header) {
+  top: env(safe-area-inset-top, 0px);
 }
 
 .ssh-shell {

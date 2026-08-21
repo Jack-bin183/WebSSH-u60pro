@@ -1802,6 +1802,53 @@
         </div>
       </el-tab-pane>
 
+      <el-tab-pane label="DDNS-GO" name="ddnsGo">
+        <div class="system-tool-panel ddns-go-panel">
+          <div class="system-tool-header">
+            <div>
+              <div class="settings-section-title">DDNS-GO</div>
+              <div class="system-tool-hint">安装目录与配置：/data/plugins/ddns-go/；管理端口仅监听本机，通过主程序安全代理访问。</div>
+            </div>
+            <el-button size="small" :loading="ddnsGo.loading" @click="loadDDNSGoStatus">刷新</el-button>
+          </div>
+          <div class="sms-forward-switches">
+            <div class="local-speedtest-option">
+              <span>运行服务</span>
+              <el-switch
+                :model-value="ddnsGo.running"
+                :disabled="!ddnsGo.installed"
+                :loading="ddnsGo.controlChanging"
+                active-text="开" inactive-text="关"
+                @change="(val: string | number | boolean) => setDDNSGoRunning(Boolean(val))" />
+            </div>
+            <div class="local-speedtest-option">
+              <span>开机自启</span>
+              <el-switch
+                :model-value="ddnsGo.autostartEnabled"
+                :disabled="!ddnsGo.installed"
+                :loading="ddnsGo.autostartChanging"
+                active-text="开" inactive-text="关"
+                @change="(val: string | number | boolean) => setDDNSGoAutostart(Boolean(val))" />
+            </div>
+          </div>
+          <div class="system-tool-actions">
+            <el-button type="primary" :loading="ddnsGo.installing" @click="installDDNSGo">
+              {{ ddnsGo.installed ? '更新 DDNS-GO' : '安装 DDNS-GO' }}
+            </el-button>
+            <el-button :disabled="!ddnsGo.running" :loading="ddnsGo.opening" @click="openDDNSGoManager">打开管理界面</el-button>
+          </div>
+          <div class="sms-forward-hint">
+            {{ ddnsGo.installed ? `已安装 ${ddnsGo.version || ''}` : '尚未安装' }}；登录账号与主程序当前账号同步，无需再次输入密码。
+          </div>
+          <div v-if="ddnsGo.status" class="local-speedtest-message">{{ ddnsGo.status }}</div>
+          <iframe
+            v-if="ddnsGo.frameUrl"
+            class="ddns-go-frame"
+            :src="ddnsGo.frameUrl"
+            title="DDNS-GO 管理界面" />
+        </div>
+      </el-tab-pane>
+
       <el-tab-pane label="屏幕更新" name="devui">
         <div class="system-tool-panel">
           <div class="system-tool-header">
@@ -2529,7 +2576,7 @@ const wifiSettingsSummary = computed(() => {
   return wifiSettingsSaving.value ? '应用中...' : `${wifiInfo.value.wifiStatus24 ? '2.4G开' : '2.4G关'} / ${wifiInfo.value.wifiStatus5 ? '5G开' : '5G关'}`;
 });
 
-type SystemToolsTab = 'speedtest' | 'sms' | 'devui' | 'serialUpdate' | 'rcLocal';
+type SystemToolsTab = 'speedtest' | 'sms' | 'ddnsGo' | 'devui' | 'serialUpdate' | 'rcLocal';
 
 interface SmsMessage {
   id: number;
@@ -2596,6 +2643,20 @@ const smsForward = reactive({
   status: '',
 });
 const smsMessages = ref<SmsMessage[]>([]);
+
+const ddnsGo = reactive({
+  installed: false,
+  running: false,
+  autostartEnabled: false,
+  version: '',
+  loading: false,
+  installing: false,
+  controlChanging: false,
+  autostartChanging: false,
+  opening: false,
+  frameUrl: '',
+  status: '',
+});
 
 const devui = reactive({
   loading: false,
@@ -2736,6 +2797,9 @@ function openSystemToolsDialog(tab: SystemToolsTab = 'speedtest') {
       if (devui.downloadState === 'downloading') startDevuiDownloadPoll();
     });
   }
+  if (tab === 'ddnsGo') {
+    loadDDNSGoStatus();
+  }
   if (tab === 'rcLocal' && !rcLocal.loaded) {
     loadRcLocal();
   }
@@ -2754,6 +2818,90 @@ async function loadSmsMessages() {
     ElMessage.error('读取短信失败: ' + (e?.message ?? e));
   } finally {
     smsForward.loading = false;
+  }
+}
+
+function applyDDNSGoStatus(data: any) {
+  ddnsGo.installed = !!data.installed;
+  ddnsGo.running = !!data.running;
+  ddnsGo.autostartEnabled = !!data.autostart_enabled;
+  ddnsGo.version = data.version || '';
+  if (!ddnsGo.running) ddnsGo.frameUrl = '';
+}
+
+async function loadDDNSGoStatus() {
+  ddnsGo.loading = true;
+  try {
+    const res = await axios.get('/api/ddns-go/status');
+    if (res.data.code !== 0) throw new Error(res.data.msg || '读取状态失败');
+    applyDDNSGoStatus(res.data.data || {});
+  } catch (e: any) {
+    ddnsGo.status = '读取 DDNS-GO 状态失败: ' + (e?.message ?? e);
+  } finally {
+    ddnsGo.loading = false;
+  }
+}
+
+async function installDDNSGo() {
+  ddnsGo.installing = true;
+  ddnsGo.status = '正在下载并安装 DDNS-GO ARM64 最新版...';
+  try {
+    const res = await axios.post('/api/ddns-go/install');
+    if (res.data.code !== 0) throw new Error(res.data.msg || '安装失败');
+    applyDDNSGoStatus(res.data.data || {});
+    ddnsGo.status = res.data.msg || '安装完成';
+    ElMessage.success(ddnsGo.status);
+  } catch (e: any) {
+    ddnsGo.status = '安装 DDNS-GO 失败: ' + (e?.message ?? e);
+    ElMessage.error(ddnsGo.status);
+  } finally {
+    ddnsGo.installing = false;
+    await loadDDNSGoStatus();
+  }
+}
+
+async function setDDNSGoRunning(enabled: boolean) {
+  ddnsGo.controlChanging = true;
+  try {
+    const res = await axios.post('/api/ddns-go/control', { action: enabled ? 'start' : 'stop' });
+    applyDDNSGoStatus(res.data.data || {});
+    if (res.data.code !== 0) throw new Error(res.data.msg || '操作失败');
+    ddnsGo.status = enabled ? 'DDNS-GO 已启动' : 'DDNS-GO 已停止';
+  } catch (e: any) {
+    ddnsGo.status = '控制 DDNS-GO 失败: ' + (e?.message ?? e);
+    ElMessage.error(ddnsGo.status);
+  } finally {
+    ddnsGo.controlChanging = false;
+    await loadDDNSGoStatus();
+  }
+}
+
+async function setDDNSGoAutostart(enabled: boolean) {
+  ddnsGo.autostartChanging = true;
+  try {
+    const res = await axios.post('/api/ddns-go/autostart', { enabled });
+    applyDDNSGoStatus(res.data.data || {});
+    if (res.data.code !== 0) throw new Error(res.data.msg || '操作失败');
+  } catch (e: any) {
+    ddnsGo.status = '设置 DDNS-GO 自启失败: ' + (e?.message ?? e);
+    ElMessage.error(ddnsGo.status);
+  } finally {
+    ddnsGo.autostartChanging = false;
+  }
+}
+
+async function openDDNSGoManager() {
+  ddnsGo.opening = true;
+  try {
+    const res = await axios.post('/api/ddns-go/session');
+    if (res.data.code !== 0) throw new Error(res.data.msg || '建立管理会话失败');
+    ddnsGo.frameUrl = `${res.data.data.url}?t=${Date.now()}`;
+    ddnsGo.status = '已使用主程序账号自动登录 DDNS-GO';
+  } catch (e: any) {
+    ddnsGo.status = '打开 DDNS-GO 管理界面失败: ' + (e?.message ?? e);
+    ElMessage.error(ddnsGo.status);
+  } finally {
+    ddnsGo.opening = false;
   }
 }
 
@@ -5686,6 +5834,7 @@ watch(systemToolsActiveTab, (tab) => {
       if (devui.downloadState === 'downloading') startDevuiDownloadPoll();
     });
   }
+  if (tab === 'ddnsGo') loadDDNSGoStatus();
   if (tab === 'rcLocal' && !rcLocal.loaded) loadRcLocal();
 });
 
@@ -7797,6 +7946,15 @@ onUnmounted(() => {
   color: rgba(255, 255, 255, 0.58);
   font-size: 12px;
   line-height: 1.5;
+}
+
+.ddns-go-frame {
+  width: 100%;
+  min-height: min(620px, 68dvh);
+  margin-top: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 12px;
+  background: #ffffff;
 }
 .system-tool-hint {
   margin-top: 6px;
