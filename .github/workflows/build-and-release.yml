@@ -16,7 +16,7 @@ jobs:
     steps:
       # 1. 拉代码（需要完整历史和 tags 才能生成 changelog）
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           fetch-depth: 0
@@ -59,7 +59,7 @@ jobs:
 
       # 3. Node 环境
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 26
 
@@ -79,7 +79,7 @@ jobs:
 
       # 6. Go 环境
       - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v7
         with:
           go-version: '1.24.x'
 
@@ -166,7 +166,7 @@ jobs:
 
       # 11. 创建 Release（直接上传原始文件，并把 changelog 作为 release body）
       - name: Create Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ steps.version.outputs.version }}
           name: ${{ steps.version.outputs.version }}

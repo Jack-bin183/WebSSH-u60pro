@@ -8242,15 +8242,17 @@ onUnmounted(() => {
 }
 .devui-status-grid span {
   display: block;
-  color: rgba(255, 255, 255, 0.56);
-  font-size: 12px;
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 13px;
+  font-weight: 700;
   line-height: 1.4;
+  white-space: nowrap;
 }
 .devui-status-grid strong {
   display: block;
   margin-top: 4px;
-  color: rgba(255, 255, 255, 0.88);
-  font-size: 13px;
+  color: rgba(255, 255, 255, 0.56);
+  font-size: 12px;
   font-weight: 400;
   line-height: 1.4;
   overflow-wrap: anywhere;
@@ -8259,7 +8261,7 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  width: calc((100% - 10px) / 2);
+  width: 100%;
 }
 .local-speedtest-option.devui-patch-status {
   width: 100%;
@@ -8272,16 +8274,17 @@ onUnmounted(() => {
 }
 .devui-patch-copy > span:first-child {
   display: block;
-  color: rgba(255, 255, 255, 0.56);
-  font-size: 12px;
-  font-weight: 400;
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 13px;
+  font-weight: 700;
   line-height: 1.4;
+  white-space: nowrap;
 }
 .devui-patch-copy .devui-patch-value {
   display: block;
   margin-top: 4px;
-  color: rgba(255, 255, 255, 0.88);
-  font-size: 13px;
+  color: rgba(255, 255, 255, 0.56);
+  font-size: 12px;
   font-weight: 400;
   line-height: 1.4;
 }

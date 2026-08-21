@@ -14,7 +14,7 @@ jobs:
 
     steps:
       - name: 检出仓库（获取 mm.sh）
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           sparse-checkout: |
             mihomo/mm.sh
@@ -75,7 +75,7 @@ jobs:
                  mm.sh 2>/dev/null || true
 
       - name: 发布 latest-data Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: latest-data
           name: "Mihomo 数据文件（每日自动更新）"
