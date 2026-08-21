@@ -84,7 +84,7 @@ jobs:
         uses: actions/setup-go@v7
         with:
           go-version: '1.24.x'
-          cache-dependency-path: gossh/go.sum
+          cache-dependency-path: gossh/go.mod
 
       # 6.5 CGO ARM64 musl 交叉编译工具链
       - name: Install OpenWrt ARM64 musl toolchain
