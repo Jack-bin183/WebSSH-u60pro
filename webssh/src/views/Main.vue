@@ -965,7 +965,7 @@
       </div>
 
             <!-- 接口状态卡片 -->
-      <div class="card">
+      <div class="card interface-status-card">
         <div class="card-header">
           <h3 class="hd">
             <img style="width: 24px" :src="InterfaceIcon" alt="" />接口状态
@@ -1607,8 +1607,8 @@
     title="系统工具"
     width="min(760px, 96vw)"
     :close-on-click-modal="!localSpeedTest.running"
-    class="wireless-dialog">
-    <el-tabs v-model="systemToolsActiveTab" class="system-tools-tabs">
+    class="wireless-dialog network-settings-dialog">
+    <el-tabs v-model="systemToolsActiveTab" class="system-tools-tabs ordered-system-tools-tabs">
       <el-tab-pane label="流量测速" name="speedtest">
         <div class="local-speedtest-panel">
       <div class="local-speedtest-header">
@@ -2027,13 +2027,13 @@
       </el-tab-pane>
     </el-tabs>
     <template #footer>
-      <el-button @click="systemToolsDialogVisible = false" :disabled="localSpeedTest.running">关闭</el-button>
       <template v-if="systemToolsActiveTab === 'speedtest'">
         <el-button v-if="localSpeedTest.running" type="danger" @click="() => stopLocalSpeedTest()">停止</el-button>
         <el-button v-else type="primary" @click="startLocalSpeedTest">开始测速</el-button>
       </template>
-      <el-button v-else-if="systemToolsActiveTab === 'serialUpdate'" type="danger" :loading="serialUpdate.saving" @click="writeSerialUpdate">写入串号</el-button>
-      <el-button v-else-if="systemToolsActiveTab === 'rcLocal'" type="primary" :loading="rcLocal.saving" @click="saveRcLocal">保存</el-button>
+      <el-button v-if="systemToolsActiveTab === 'serialUpdate'" type="danger" :loading="serialUpdate.saving" @click="writeSerialUpdate">写入串号</el-button>
+      <el-button v-if="systemToolsActiveTab === 'rcLocal'" type="primary" :loading="rcLocal.saving" @click="saveRcLocal">保存</el-button>
+      <el-button @click="systemToolsDialogVisible = false" :disabled="localSpeedTest.running">关闭</el-button>
     </template>
   </el-dialog>
 
@@ -2623,7 +2623,7 @@ interface SmsMessage {
 }
 
 const systemToolsDialogVisible = ref(false);
-const systemToolsActiveTab = ref<SystemToolsTab>('speedtest');
+const systemToolsActiveTab = ref<SystemToolsTab>('devui');
 let localSpeedTestWorkers: Worker[] = [];
 // 当前速度按固定节拍采样的定时器（见 startLocalSpeedTest 里的 sampleTick）
 let localSpeedTestSampleTimer: number | null = null;
@@ -2851,7 +2851,7 @@ function fmtTime(v: number): string {
   return (Number.isInteger(v) ? String(v) : v.toFixed(1)) + 's';
 }
 
-function openSystemToolsDialog(tab: SystemToolsTab = 'speedtest') {
+function openSystemToolsDialog(tab: SystemToolsTab = 'devui') {
   systemToolsActiveTab.value = tab;
   systemToolsDialogVisible.value = true;
   if (tab === 'sms') {
@@ -6042,6 +6042,8 @@ onUnmounted(() => {
 <style scoped>
 /* 基础样式 */
 .page {
+  display: flex;
+  justify-content: center;
   color: white;
   min-height: 100vh;
   min-height: 100dvh;
@@ -6515,6 +6517,7 @@ onUnmounted(() => {
 /* 内容区域 - 等宽网格 */
 .content {
   display: grid;
+  width: 100%;
   grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
   justify-content: center;
   gap: 24px;
@@ -6580,6 +6583,13 @@ onUnmounted(() => {
 /* 设备信息卡片 */
 .device-info-card {
   grid-column: 1 / -1; /* 占据整行 */
+}
+
+/* 接口状态与设备信息等宽，内部仍保留 IPv4 / IPv6 两栏 */
+.interface-status-card {
+  grid-column: 1 / -1;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 /* 操作卡片 */
@@ -7515,6 +7525,7 @@ onUnmounted(() => {
   }
 }
 .child {
+  flex: 0 1 1600px;
   width: 100%;
   max-width: 1600px;
   margin: 0 auto;
@@ -8077,6 +8088,18 @@ onUnmounted(() => {
 .system-tools-tabs :deep(.el-tabs__active-bar) {
   background: #7dd3fc;
 }
+.ordered-system-tools-tabs :deep(.el-tabs__active-bar) {
+  display: none;
+}
+.ordered-system-tools-tabs :deep(.el-tabs__item.is-active) {
+  box-shadow: inset 0 -2px #7dd3fc;
+}
+.ordered-system-tools-tabs :deep(#tab-devui) { order: 1; }
+.ordered-system-tools-tabs :deep(#tab-sms) { order: 2; }
+.ordered-system-tools-tabs :deep(#tab-ddnsGo) { order: 3; }
+.ordered-system-tools-tabs :deep(#tab-serialUpdate) { order: 4; }
+.ordered-system-tools-tabs :deep(#tab-rcLocal) { order: 5; }
+.ordered-system-tools-tabs :deep(#tab-speedtest) { order: 6; }
 .system-tools-tabs :deep(.el-tabs__nav) {
   float: none;
   display: flex;
