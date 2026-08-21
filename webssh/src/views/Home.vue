@@ -1,6 +1,6 @@
 <template>
   <el-container class="home-shell">
-    
+    <Teleport to="body">
           <el-header 
             v-show="!data.navCollapsed"
             class="top-nav-header">
@@ -177,6 +177,7 @@
               </el-icon>
             </span>
           </button>
+    </Teleport>
 
           <div>
             <el-dialog
@@ -1115,6 +1116,7 @@ const updateProxyMode = ref<"auto" | "builtin" | "custom">("auto");
 const updateSelectedProxy = ref("");
 const updateCustomProxy = ref("");
 let updateStatusTimer = 0;
+let updateReloadTimer = 0;
 
 const builtinUpdateProxyURLs = [
 	"https://v6.gh-proxy.org/",
@@ -1299,6 +1301,25 @@ function stopUpdateStatusPolling() {
   }
 }
 
+function reloadAfterUpdate() {
+  if (updateReloadTimer) return;
+  const probe = async () => {
+    try {
+      const response = await fetch(`/web_base_dir?update_probe=${Date.now()}`, { cache: "no-store" });
+      if (!response.ok) return;
+      window.clearInterval(updateReloadTimer);
+      updateReloadTimer = 0;
+      const nextURL = new URL(window.location.href);
+      nextURL.searchParams.set("updated", String(Date.now()));
+      window.location.replace(nextURL.toString());
+    } catch {
+      // 程序仍在重启，继续等待。
+    }
+  };
+  window.setTimeout(probe, 1500);
+  updateReloadTimer = window.setInterval(probe, 1000);
+}
+
 async function refreshUpdateStatus() {
   try {
     const ret = await axios.get<ResponseData>("/api/update/status");
@@ -1307,6 +1328,7 @@ async function refreshUpdateStatus() {
       if (["failed", "restarting", "canceled"].includes(updateProgress.state)) {
         stopUpdateStatusPolling();
         cancelingUpdate.value = false;
+        if (updateProgress.state === "restarting") reloadAfterUpdate();
       }
     }
   } catch (err) {
@@ -1315,6 +1337,7 @@ async function refreshUpdateStatus() {
       updateProgress.msg = "连接已中断，程序可能正在重启";
     }
     stopUpdateStatusPolling();
+    if (["installing", "restarting"].includes(updateProgress.state)) reloadAfterUpdate();
   }
 }
 
@@ -2903,6 +2926,10 @@ onBeforeUnmount(() => {
   stopUpdateStatusPolling();
   disconnectAllSession();
   window.removeEventListener("resize", updateWindowWidth);
+  if (updateReloadTimer) {
+    window.clearInterval(updateReloadTimer);
+    updateReloadTimer = 0;
+  }
   window.onbeforeunload = null;
 })
 
@@ -3041,10 +3068,19 @@ const terminalBackground = computed(() => {
   position: fixed;
   top: calc(var(--app-safe-top, 0px));
   z-index: 3001;
+  background: #315697;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 
 :global(html.ios-pwa .nav-anchor-toggle-closed) {
   top: env(safe-area-inset-top, 0px);
+}
+
+@media (prefers-color-scheme: dark) {
+  .nav-anchor-toggle-closed {
+    background: #263144;
+  }
 }
 
 .nav-anchor-icon {

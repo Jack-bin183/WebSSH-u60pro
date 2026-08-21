@@ -1807,9 +1807,55 @@
           <div class="system-tool-header">
             <div>
               <div class="settings-section-title">DDNS-GO</div>
-              <div class="system-tool-hint">安装目录与配置：/data/plugins/ddns-go/；管理端口仅监听本机，通过主程序安全代理访问。</div>
+              <div class="system-tool-hint">安装和配置均保存在 /data/plugins/ddns-go/，账号密码由主程序自动同步。</div>
             </div>
-            <el-button size="small" :loading="ddnsGo.loading" @click="loadDDNSGoStatus">刷新</el-button>
+            <el-button size="small" :loading="ddnsGo.loading" @click="loadDDNSGo">刷新</el-button>
+          </div>
+          <div class="sms-forward-grid">
+            <section class="system-tool-section">
+              <div class="system-tool-section-title">DNS 服务商</div>
+              <el-input v-model="ddnsGo.Name" placeholder="配置名称，例如：默认" clearable />
+              <el-select v-model="ddnsGo.DnsName" placeholder="选择 DNS 服务商" filterable>
+                <el-option v-for="item in ddnsGoProviderOptions" :key="item.value" :label="item.label" :value="item.value" />
+              </el-select>
+              <el-input v-model="ddnsGo.DnsID" placeholder="ID / Access Key" clearable />
+              <el-input v-model="ddnsGo.DnsSecret" placeholder="Secret / Token" clearable show-password />
+              <el-input v-model="ddnsGo.DnsExtParam" placeholder="扩展参数，可选" clearable />
+              <el-input v-model="ddnsGo.TTL" placeholder="TTL，例如 300" clearable />
+            </section>
+            <section class="system-tool-section">
+              <div class="system-tool-section-title">IPv4</div>
+              <el-switch v-model="ddnsGo.Ipv4Enable" active-text="启用" inactive-text="关闭" />
+              <el-select v-model="ddnsGo.Ipv4GetType" placeholder="获取方式">
+                <el-option label="通过公网 URL" value="url" />
+                <el-option label="通过网卡" value="netInterface" />
+                <el-option label="通过命令" value="cmd" />
+              </el-select>
+              <el-input v-if="ddnsGo.Ipv4GetType === 'url'" v-model="ddnsGo.Ipv4Url" placeholder="公网 IP 查询 URL，多个用逗号分隔" clearable />
+              <el-input v-if="ddnsGo.Ipv4GetType === 'netInterface'" v-model="ddnsGo.Ipv4NetInterface" placeholder="网卡名称，例如 eth0" clearable />
+              <el-input v-if="ddnsGo.Ipv4GetType === 'cmd'" v-model="ddnsGo.Ipv4Cmd" placeholder="获取 IPv4 的命令" clearable />
+              <el-input v-model="ddnsGo.Ipv4Domains" type="textarea" :rows="3" placeholder="IPv4 域名，每行一个" />
+            </section>
+            <section class="system-tool-section">
+              <div class="system-tool-section-title">IPv6</div>
+              <el-switch v-model="ddnsGo.Ipv6Enable" active-text="启用" inactive-text="关闭" />
+              <el-select v-model="ddnsGo.Ipv6GetType" placeholder="获取方式">
+                <el-option label="通过公网 URL" value="url" />
+                <el-option label="通过网卡" value="netInterface" />
+                <el-option label="通过命令" value="cmd" />
+              </el-select>
+              <el-input v-if="ddnsGo.Ipv6GetType === 'url'" v-model="ddnsGo.Ipv6Url" placeholder="公网 IPv6 查询 URL" clearable />
+              <el-input v-if="ddnsGo.Ipv6GetType === 'netInterface'" v-model="ddnsGo.Ipv6NetInterface" placeholder="网卡名称，例如 eth0" clearable />
+              <el-input v-if="ddnsGo.Ipv6GetType === 'cmd'" v-model="ddnsGo.Ipv6Cmd" placeholder="获取 IPv6 的命令" clearable />
+              <el-input v-model="ddnsGo.Ipv6Reg" placeholder="IPv6 正则表达式，可选" clearable />
+              <el-input v-model="ddnsGo.Ipv6Domains" type="textarea" :rows="3" placeholder="IPv6 域名，每行一个" />
+            </section>
+            <section class="system-tool-section">
+              <div class="system-tool-section-title">Webhook（可选）</div>
+              <el-input v-model="ddnsGo.WebhookURL" placeholder="Webhook URL" clearable />
+              <el-input v-model="ddnsGo.WebhookHeaders" type="textarea" :rows="2" placeholder="请求头" />
+              <el-input v-model="ddnsGo.WebhookRequestBody" type="textarea" :rows="3" placeholder="请求体" />
+            </section>
           </div>
           <div class="sms-forward-switches">
             <div class="local-speedtest-option">
@@ -1835,17 +1881,12 @@
             <el-button type="primary" :loading="ddnsGo.installing" @click="installDDNSGo">
               {{ ddnsGo.installed ? '更新 DDNS-GO' : '安装 DDNS-GO' }}
             </el-button>
-            <el-button :disabled="!ddnsGo.running" :loading="ddnsGo.opening" @click="openDDNSGoManager">打开管理界面</el-button>
+            <el-button :disabled="!ddnsGo.installed" :loading="ddnsGo.configSaving" @click="saveDDNSGoConfig">保存配置</el-button>
           </div>
           <div class="sms-forward-hint">
-            {{ ddnsGo.installed ? `已安装 ${ddnsGo.version || ''}` : '尚未安装' }}；登录账号与主程序当前账号同步，无需再次输入密码。
+            {{ ddnsGo.installed ? `已安装 ${ddnsGo.version || ''}` : '尚未安装' }}；配置由主程序写入 DDNS-GO，无需打开或登录另一网页。
           </div>
           <div v-if="ddnsGo.status" class="local-speedtest-message">{{ ddnsGo.status }}</div>
-          <iframe
-            v-if="ddnsGo.frameUrl"
-            class="ddns-go-frame"
-            :src="ddnsGo.frameUrl"
-            title="DDNS-GO 管理界面" />
         </div>
       </el-tab-pane>
 
@@ -2653,10 +2694,40 @@ const ddnsGo = reactive({
   installing: false,
   controlChanging: false,
   autostartChanging: false,
-  opening: false,
-  frameUrl: '',
+  configSaving: false,
   status: '',
+  Name: '默认',
+  DnsName: 'cloudflare',
+  DnsID: '',
+  DnsSecret: '',
+  DnsExtParam: '',
+  HttpInterface: '',
+  Ipv4Cmd: '',
+  Ipv4Domains: '',
+  Ipv4Enable: true,
+  Ipv4GetType: 'url',
+  Ipv4NetInterface: '',
+  Ipv4Url: 'https://myip.ipip.net, https://ddns.oray.com/checkip',
+  Ipv6Cmd: '',
+  Ipv6Domains: '',
+  Ipv6Enable: false,
+  Ipv6GetType: 'netInterface',
+  Ipv6NetInterface: '',
+  Ipv6Reg: '',
+  Ipv6Url: '',
+  TTL: '300',
+  WebhookURL: '',
+  WebhookRequestBody: '',
+  WebhookHeaders: '',
 });
+const ddnsGoProviderOptions = [
+  ['Cloudflare', 'cloudflare'], ['阿里云 DNS', 'alidns'], ['阿里云 ESA', 'aliesa'],
+  ['腾讯云', 'tencentcloud'], ['DNSPod', 'dnspod'], ['华为云', 'huaweicloud'],
+  ['百度云', 'baiducloud'], ['Porkbun', 'porkbun'], ['GoDaddy', 'godaddy'],
+  ['Namecheap', 'namecheap'], ['NameSilo', 'namesilo'], ['Vercel', 'vercel'],
+  ['Dynadot', 'dynadot'], ['Dynv6', 'dynv6'], ['Spaceship', 'spaceship'],
+  ['DNSLA', 'dnsla'], ['自定义回调', 'callback'],
+].map(([label, value]) => ({ label, value }));
 
 const devui = reactive({
   loading: false,
@@ -2798,7 +2869,7 @@ function openSystemToolsDialog(tab: SystemToolsTab = 'speedtest') {
     });
   }
   if (tab === 'ddnsGo') {
-    loadDDNSGoStatus();
+    loadDDNSGo();
   }
   if (tab === 'rcLocal' && !rcLocal.loaded) {
     loadRcLocal();
@@ -2826,7 +2897,18 @@ function applyDDNSGoStatus(data: any) {
   ddnsGo.running = !!data.running;
   ddnsGo.autostartEnabled = !!data.autostart_enabled;
   ddnsGo.version = data.version || '';
-  if (!ddnsGo.running) ddnsGo.frameUrl = '';
+}
+
+async function loadDDNSGoConfig() {
+  const res = await axios.get('/api/ddns-go/config');
+  if (res.data.code !== 0) throw new Error(res.data.msg || '读取配置失败');
+  Object.assign(ddnsGo, res.data.data || {});
+}
+
+async function loadDDNSGo() {
+  await Promise.all([loadDDNSGoStatus(), loadDDNSGoConfig().catch((e: any) => {
+    ddnsGo.status = '读取 DDNS-GO 配置失败: ' + (e?.message ?? e);
+  })]);
 }
 
 async function loadDDNSGoStatus() {
@@ -2890,18 +2972,35 @@ async function setDDNSGoAutostart(enabled: boolean) {
   }
 }
 
-async function openDDNSGoManager() {
-  ddnsGo.opening = true;
+async function saveDDNSGoConfig() {
+  if (!ddnsGo.Name.trim() || !ddnsGo.DnsName) {
+    ElMessage.warning('请填写配置名称并选择 DNS 服务商');
+    return;
+  }
+  if (!ddnsGo.Ipv4Enable && !ddnsGo.Ipv6Enable) {
+    ElMessage.warning('IPv4 与 IPv6 至少启用一项');
+    return;
+  }
+  ddnsGo.configSaving = true;
   try {
-    const res = await axios.post('/api/ddns-go/session');
-    if (res.data.code !== 0) throw new Error(res.data.msg || '建立管理会话失败');
-    ddnsGo.frameUrl = `${res.data.data.url}?t=${Date.now()}`;
-    ddnsGo.status = '已使用主程序账号自动登录 DDNS-GO';
+    const configKeys = [
+      'Name', 'DnsName', 'DnsID', 'DnsSecret', 'DnsExtParam', 'HttpInterface',
+      'Ipv4Cmd', 'Ipv4Domains', 'Ipv4Enable', 'Ipv4GetType', 'Ipv4NetInterface', 'Ipv4Url',
+      'Ipv6Cmd', 'Ipv6Domains', 'Ipv6Enable', 'Ipv6GetType', 'Ipv6NetInterface', 'Ipv6Reg', 'Ipv6Url',
+      'TTL', 'WebhookURL', 'WebhookRequestBody', 'WebhookHeaders',
+    ];
+    const payload = Object.fromEntries(configKeys.map((key) => [key, (ddnsGo as any)[key]]));
+    const res = await axios.put('/api/ddns-go/config', payload);
+    if (res.data.code !== 0) throw new Error(res.data.msg || '保存配置失败');
+    Object.assign(ddnsGo, res.data.data || {});
+    ddnsGo.status = res.data.msg || 'DDNS-GO 配置已保存';
+    ElMessage.success(ddnsGo.status);
   } catch (e: any) {
-    ddnsGo.status = '打开 DDNS-GO 管理界面失败: ' + (e?.message ?? e);
+    ddnsGo.status = '保存 DDNS-GO 配置失败: ' + (e?.message ?? e);
     ElMessage.error(ddnsGo.status);
   } finally {
-    ddnsGo.opening = false;
+    ddnsGo.configSaving = false;
+    await loadDDNSGoStatus();
   }
 }
 
@@ -5834,7 +5933,7 @@ watch(systemToolsActiveTab, (tab) => {
       if (devui.downloadState === 'downloading') startDevuiDownloadPoll();
     });
   }
-  if (tab === 'ddnsGo') loadDDNSGoStatus();
+  if (tab === 'ddnsGo') loadDDNSGo();
   if (tab === 'rcLocal' && !rcLocal.loaded) loadRcLocal();
 });
 
@@ -7948,14 +8047,6 @@ onUnmounted(() => {
   line-height: 1.5;
 }
 
-.ddns-go-frame {
-  width: 100%;
-  min-height: min(620px, 68dvh);
-  margin-top: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  border-radius: 12px;
-  background: #ffffff;
-}
 .system-tool-hint {
   margin-top: 6px;
   color: rgba(255, 255, 255, 0.58);

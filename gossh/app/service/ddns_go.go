@@ -13,8 +13,6 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
-	"net/http/httputil"
-	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -29,12 +27,12 @@ const (
 	ddnsGoDir             = "/data/plugins/ddns-go"
 	ddnsGoBinaryName      = "ddns-go"
 	ddnsGoConfigName      = "config.yaml"
+	ddnsGoManagedName     = "webssh-config.json"
 	ddnsGoPIDName         = "ddns-go.pid"
 	ddnsGoLogName         = "ddns-go.log"
 	ddnsGoAutostartMarker = ".autostart"
 	ddnsGoListen          = "127.0.0.1:9876"
 	ddnsGoUpstream        = "http://127.0.0.1:9876"
-	ddnsGoProxyPrefix     = "/api/ddns-go/proxy"
 	ddnsGoReleaseAPI      = "https://api.github.com/repos/jeessy2/ddns-go/releases/latest"
 )
 
@@ -57,6 +55,70 @@ type ddnsGoRelease struct {
 		Name string `json:"name"`
 		URL  string `json:"browser_download_url"`
 	} `json:"assets"`
+}
+
+// ddnsGoManagedConfig mirrors DDNS-GO's /save payload while deliberately
+// excluding its username and password. Credentials are always supplied by the
+// authenticated WebSSH user on the server side.
+type ddnsGoManagedConfig struct {
+	Name               string `json:"Name"`
+	DnsName            string `json:"DnsName"`
+	DnsID              string `json:"DnsID"`
+	DnsSecret          string `json:"DnsSecret"`
+	DnsExtParam        string `json:"DnsExtParam"`
+	HttpInterface      string `json:"HttpInterface"`
+	Ipv4Cmd            string `json:"Ipv4Cmd"`
+	Ipv4Domains        string `json:"Ipv4Domains"`
+	Ipv4Enable         bool   `json:"Ipv4Enable"`
+	Ipv4GetType        string `json:"Ipv4GetType"`
+	Ipv4NetInterface   string `json:"Ipv4NetInterface"`
+	Ipv4URL            string `json:"Ipv4Url"`
+	Ipv6Cmd            string `json:"Ipv6Cmd"`
+	Ipv6Domains        string `json:"Ipv6Domains"`
+	Ipv6Enable         bool   `json:"Ipv6Enable"`
+	Ipv6GetType        string `json:"Ipv6GetType"`
+	Ipv6NetInterface   string `json:"Ipv6NetInterface"`
+	Ipv6Reg            string `json:"Ipv6Reg"`
+	Ipv6URL            string `json:"Ipv6Url"`
+	TTL                string `json:"TTL"`
+	WebhookURL         string `json:"WebhookURL"`
+	WebhookRequestBody string `json:"WebhookRequestBody"`
+	WebhookHeaders     string `json:"WebhookHeaders"`
+}
+
+func defaultDDNSGoManagedConfig() ddnsGoManagedConfig {
+	return ddnsGoManagedConfig{
+		Name: "默认", DnsName: "cloudflare", TTL: "300",
+		Ipv4Enable: true, Ipv4GetType: "url",
+		Ipv4URL:     "https://myip.ipip.net, https://ddns.oray.com/checkip",
+		Ipv6GetType: "netInterface",
+	}
+}
+
+func loadDDNSGoManagedConfig() (ddnsGoManagedConfig, error) {
+	config := defaultDDNSGoManagedConfig()
+	data, err := os.ReadFile(ddnsGoPath(ddnsGoManagedName))
+	if os.IsNotExist(err) {
+		return config, nil
+	}
+	if err != nil {
+		return config, err
+	}
+	if err := json.Unmarshal(data, &config); err != nil {
+		return config, fmt.Errorf("读取 DDNS-GO 管理配置失败: %w", err)
+	}
+	return config, nil
+}
+
+func saveDDNSGoManagedConfig(config ddnsGoManagedConfig) error {
+	if err := os.MkdirAll(ddnsGoDir, 0755); err != nil {
+		return err
+	}
+	data, err := json.MarshalIndent(config, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(ddnsGoPath(ddnsGoManagedName), data, 0600)
 }
 
 func ddnsGoPath(name string) string { return filepath.Join(ddnsGoDir, name) }
@@ -419,81 +481,91 @@ func loginDDNSGo(username, password string) (*http.Cookie, error) {
 	return nil, fmt.Errorf("ddns-go 登录失败: %s", strings.TrimSpace(string(data)))
 }
 
-func DDNSGoSessionHandler(c *gin.Context) {
-	if !getDDNSGoStatus().Running {
-		c.JSON(200, gin.H{"code": 1, "msg": "请先启动 ddns-go"})
+func DDNSGoConfigHandler(c *gin.Context) {
+	config, err := loadDDNSGoManagedConfig()
+	if err != nil {
+		c.JSON(200, gin.H{"code": 1, "msg": err.Error()})
 		return
+	}
+	c.JSON(200, gin.H{"code": 0, "msg": "ok", "data": config})
+}
+
+func DDNSGoSaveConfigHandler(c *gin.Context) {
+	var config ddnsGoManagedConfig
+	if err := c.ShouldBindJSON(&config); err != nil {
+		c.JSON(200, gin.H{"code": 1, "msg": "配置格式错误"})
+		return
+	}
+	config.Name = strings.TrimSpace(config.Name)
+	config.DnsName = strings.TrimSpace(config.DnsName)
+	if config.Name == "" || config.DnsName == "" {
+		c.JSON(200, gin.H{"code": 2, "msg": "请填写配置名称并选择 DNS 服务商"})
+		return
+	}
+	if !config.Ipv4Enable && !config.Ipv6Enable {
+		c.JSON(200, gin.H{"code": 2, "msg": "IPv4 与 IPv6 至少启用一项"})
+		return
+	}
+	status := getDDNSGoStatus()
+	if !status.Installed {
+		c.JSON(200, gin.H{"code": 3, "msg": "请先安装 DDNS-GO"})
+		return
+	}
+	temporaryStart := !status.Running
+	if temporaryStart {
+		if err := startDDNSGo(); err != nil {
+			c.JSON(200, gin.H{"code": 4, "msg": err.Error()})
+			return
+		}
+		defer stopDDNSGo()
 	}
 	var user model.WebUser
 	u, err := user.FindByID(c.GetUint("uid"))
 	if err != nil {
-		c.JSON(200, gin.H{"code": 2, "msg": "读取当前用户失败"})
+		c.JSON(200, gin.H{"code": 5, "msg": "读取当前用户失败"})
 		return
 	}
 	cookie, err := loginDDNSGo(u.Name, u.Pwd)
 	if err != nil {
-		c.JSON(200, gin.H{"code": 3, "msg": err.Error()})
+		c.JSON(200, gin.H{"code": 6, "msg": err.Error()})
 		return
 	}
-	cookie.Path = ddnsGoProxyPrefix + "/"
-	cookie.HttpOnly = true
-	cookie.SameSite = http.SameSiteStrictMode
-	http.SetCookie(c.Writer, cookie)
-	auth := c.Request.Header.Get("Authorization")
-	http.SetCookie(c.Writer, &http.Cookie{Name: "webssh_token", Value: auth, Path: ddnsGoProxyPrefix + "/", HttpOnly: true, SameSite: http.SameSiteStrictMode, MaxAge: 7200})
-	c.JSON(200, gin.H{"code": 0, "msg": "ok", "data": gin.H{"url": ddnsGoProxyPrefix + "/"}})
-}
-
-func DDNSGoProxyHandler(c *gin.Context) {
-	path := c.Param("path")
-	if path == "" {
-		path = "/"
+	payload := map[string]any{
+		"Username": u.Name, "Password": u.Pwd, "Lang": "zh-cn",
+		"NotAllowWanAccess": true,
+		"WebhookURL":        config.WebhookURL, "WebhookRequestBody": config.WebhookRequestBody,
+		"WebhookHeaders": config.WebhookHeaders, "DnsConf": []ddnsGoManagedConfig{config},
 	}
-	// DDNS-GO 的保存页包含自己的账号字段。始终由主程序覆盖这两个字段，
-	// 防止嵌入页把凭据改成与当前主程序用户不一致。
-	if path == "/save" && c.Request.Method == http.MethodPost {
-		var payload map[string]any
-		body, err := io.ReadAll(io.LimitReader(c.Request.Body, 4<<20))
-		c.Request.Body = io.NopCloser(bytes.NewReader(body))
-		if err == nil && json.Unmarshal(body, &payload) == nil {
-			var user model.WebUser
-			if u, findErr := user.FindByID(c.GetUint("uid")); findErr == nil {
-				payload["Username"] = u.Name
-				payload["Password"] = u.Pwd
-				if rewritten, marshalErr := json.Marshal(payload); marshalErr == nil {
-					c.Request.Body = io.NopCloser(bytes.NewReader(rewritten))
-					c.Request.ContentLength = int64(len(rewritten))
-					c.Request.Header.Set("Content-Length", strconv.Itoa(len(rewritten)))
-				}
-			}
-		}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		c.JSON(200, gin.H{"code": 7, "msg": err.Error()})
+		return
 	}
-	target, _ := url.Parse(ddnsGoUpstream)
-	proxy := httputil.NewSingleHostReverseProxy(target)
-	original := proxy.Director
-	proxy.Director = func(req *http.Request) {
-		original(req)
-		req.URL.Path = path
-		req.Host = target.Host
+	req, err := http.NewRequestWithContext(c.Request.Context(), http.MethodPost, ddnsGoUpstream+"/save", bytes.NewReader(body))
+	if err != nil {
+		c.JSON(200, gin.H{"code": 7, "msg": err.Error()})
+		return
 	}
-	proxy.ModifyResponse = func(resp *http.Response) error {
-		if location := resp.Header.Get("Location"); strings.HasPrefix(location, "/") {
-			resp.Header.Set("Location", ddnsGoProxyPrefix+location)
-		}
-		cookies := resp.Cookies()
-		if len(cookies) > 0 {
-			resp.Header.Del("Set-Cookie")
-			for _, cookie := range cookies {
-				cookie.Path = ddnsGoProxyPrefix + "/"
-				cookie.HttpOnly = true
-				cookie.SameSite = http.SameSiteStrictMode
-				resp.Header.Add("Set-Cookie", cookie.String())
-			}
-		}
-		return nil
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Referer", ddnsGoUpstream+"/")
+	req.AddCookie(cookie)
+	resp, err := (&http.Client{Timeout: 10 * time.Second}).Do(req)
+	if err != nil {
+		c.JSON(200, gin.H{"code": 8, "msg": "写入 DDNS-GO 配置失败: " + err.Error()})
+		return
 	}
-	proxy.ErrorHandler = func(w http.ResponseWriter, _ *http.Request, err error) {
-		http.Error(w, "ddns-go 代理失败: "+err.Error(), http.StatusBadGateway)
+	defer resp.Body.Close()
+	responseData, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+	var result struct {
+		Result string `json:"result"`
 	}
-	proxy.ServeHTTP(c.Writer, c.Request)
+	if resp.StatusCode != http.StatusOK || json.Unmarshal(responseData, &result) != nil || result.Result != "ok" {
+		c.JSON(200, gin.H{"code": 9, "msg": "DDNS-GO 拒绝保存配置: " + strings.TrimSpace(string(responseData))})
+		return
+	}
+	if err := saveDDNSGoManagedConfig(config); err != nil {
+		c.JSON(200, gin.H{"code": 10, "msg": "配置已生效，但保存管理副本失败: " + err.Error()})
+		return
+	}
+	c.JSON(200, gin.H{"code": 0, "msg": "DDNS-GO 配置已保存", "data": config})
 }

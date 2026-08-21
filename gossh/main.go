@@ -1002,6 +1002,17 @@ func main() {
 	var engine = gin.Default()
 	engine.MaxMultipartMemory = 8 << 20
 	engine.Use(middleware.DbCheck(), middleware.NetFilter())
+	engine.Use(func(c *gin.Context) {
+		requestPath := c.Request.URL.Path
+		if strings.HasSuffix(requestPath, "/app/") ||
+			strings.HasSuffix(requestPath, "/app/index.html") ||
+			strings.HasSuffix(requestPath, "/app/sw.js") {
+			c.Header("Cache-Control", "no-store, no-cache, must-revalidate")
+			c.Header("Pragma", "no-cache")
+			c.Header("Expires", "0")
+		}
+		c.Next()
+	})
 	engine.GET("/web_base_dir", func(c *gin.Context) { c.JSON(200, gin.H{"code": 0, "web_base_dir": config.DefaultConfig.WebBaseDir}) })
 
 	appPath := config.DefaultConfig.WebBaseDir + "/app/"
@@ -1059,8 +1070,8 @@ func main() {
 		auth.POST("/api/ddns-go/install", service.DDNSGoInstallHandler)
 		auth.POST("/api/ddns-go/control", service.DDNSGoControlHandler)
 		auth.POST("/api/ddns-go/autostart", service.DDNSGoAutostartHandler)
-		auth.POST("/api/ddns-go/session", service.DDNSGoSessionHandler)
-		auth.Any("/api/ddns-go/proxy/*path", service.DDNSGoProxyHandler)
+		auth.GET("/api/ddns-go/config", service.DDNSGoConfigHandler)
+		auth.PUT("/api/ddns-go/config", service.DDNSGoSaveConfigHandler)
 		auth.GET("/api/system/devui/status", service.SystemDevuiStatusHandler)
 		auth.POST("/api/system/devui/download", service.SystemDevuiDownloadHandler)
 		auth.GET("/api/system/devui/download/status", service.SystemDevuiDownloadStatusHandler)
