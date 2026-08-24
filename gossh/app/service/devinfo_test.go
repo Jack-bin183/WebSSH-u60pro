@@ -36,6 +36,24 @@ func TestReadRAMUsage(t *testing.T) {
 	}
 }
 
+func TestParseFrontendDeviceUsage(t *testing.T) {
+	cpuUsage, ramUsage, err := parseFrontendDeviceUsage(map[string]interface{}{
+		"cpuinfo": []interface{}{
+			map[string]interface{}{"name": "cpu", "idle": "50"},
+		},
+		"meminfo": map[string]interface{}{
+			"total":     "1000",
+			"avaliable": "390",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cpuUsage != 50 || ramUsage != 61 {
+		t.Fatalf("parseFrontendDeviceUsage() = CPU %d, RAM %d; want CPU 50, RAM 61", cpuUsage, ramUsage)
+	}
+}
+
 func TestFormatDevInfo(t *testing.T) {
 	got := string(formatDevInfo(devInfoValues{
 		temperature: 48,

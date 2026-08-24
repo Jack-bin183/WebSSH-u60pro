@@ -42,25 +42,93 @@ func runDevInfoWriter(path string, interval time.Duration) {
 	defer ticker.Stop()
 
 	for range ticker.C {
+		fallbackCPUUsage := values.cpuUsage
 		currentCPU, err := readCPUTimes("/proc/stat")
 		if err == nil {
 			if usage, ok := calculateCPUUsage(previousCPU, currentCPU); ok {
-				values.cpuUsage = usage
+				fallbackCPUUsage = usage
 			}
 			previousCPU = currentCPU
 		}
 
+		if cpuUsage, ramUsage, err := readFrontendDeviceUsage(); err == nil {
+			values.cpuUsage = cpuUsage
+			values.ramUsage = ramUsage
+		} else {
+			values.cpuUsage = fallbackCPUUsage
+			if ramUsage, err := readRAMUsage("/proc/meminfo"); err == nil {
+				values.ramUsage = ramUsage
+			}
+		}
 		if temperature, err := readCPUTemperature(); err == nil {
 			values.temperature = temperature
-		}
-		if ramUsage, err := readRAMUsage("/proc/meminfo"); err == nil {
-			values.ramUsage = ramUsage
 		}
 		if qci, err := readLatestQCI(); err == nil && qci > 0 {
 			values.qci = qci
 		}
 
 		_ = writeAtomicFile(path, formatDevInfo(values))
+	}
+}
+
+func readFrontendDeviceUsage() (int, int, error) {
+	data, err := utils.GetDataFromUbus("zwrt_mc.device.manager", "get_device_info", map[string]interface{}{})
+	if err != nil {
+		return 0, 0, err
+	}
+	return parseFrontendDeviceUsage(data)
+}
+
+func parseFrontendDeviceUsage(data map[string]interface{}) (int, int, error) {
+	cpuInfo, ok := data["cpuinfo"].([]interface{})
+	if !ok || len(cpuInfo) == 0 {
+		return 0, 0, fmt.Errorf("cpuinfo is missing")
+	}
+	totalCPU, ok := cpuInfo[0].(map[string]interface{})
+	if !ok {
+		return 0, 0, fmt.Errorf("aggregate cpuinfo is invalid")
+	}
+	idle, err := numericValue(totalCPU["idle"])
+	if err != nil {
+		return 0, 0, fmt.Errorf("CPU idle is invalid: %w", err)
+	}
+
+	memInfo, ok := data["meminfo"].(map[string]interface{})
+	if !ok {
+		return 0, 0, fmt.Errorf("meminfo is missing")
+	}
+	totalRAM, err := numericValue(memInfo["total"])
+	if err != nil || totalRAM <= 0 {
+		return 0, 0, fmt.Errorf("RAM total is invalid")
+	}
+	availableValue := memInfo["avaliable"]
+	if availableValue == nil {
+		availableValue = memInfo["available"]
+	}
+	availableRAM, err := numericValue(availableValue)
+	if err != nil {
+		return 0, 0, fmt.Errorf("RAM available is invalid: %w", err)
+	}
+
+	cpuUsage := clampUsage(math.Round(100 - idle))
+	ramUsage := clampUsage(math.Round((totalRAM - availableRAM) * 100 / totalRAM))
+	return cpuUsage, ramUsage, nil
+}
+
+func numericValue(value interface{}) (float64, error) {
+	switch typed := value.(type) {
+	case float64:
+		return typed, nil
+	case float32:
+		return float64(typed), nil
+	case int:
+		return float64(typed), nil
+	case int64:
+		return float64(typed), nil
+	case string:
+		return strconv.ParseFloat(strings.TrimSpace(typed), 64)
+	default:
+		return 0, fmt.Errorf("unsupported numeric value %v", value)
 	}
 }
 
@@ -156,10 +224,10 @@ func readRAMUsage(path string) (int, error) {
 }
 
 func readCPUTemperature() (int, error) {
-	if temperature, err := readCPUSysfsTemperature("/sys/class/thermal"); err == nil {
+	if temperature, err := readCPUTemperatureFromUbus(); err == nil {
 		return temperature, nil
 	}
-	return readCPUTemperatureFromUbus()
+	return readCPUSysfsTemperature("/sys/class/thermal")
 }
 
 func readCPUSysfsTemperature(thermalRoot string) (int, error) {
