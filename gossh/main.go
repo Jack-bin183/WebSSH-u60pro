@@ -989,6 +989,7 @@ func initApplication() {
 	service.InitDDNSGoAutostart()
 	service.InitDevuiAutostart()
 	service.InitWifiSettingsAutostart()
+	service.InitDevInfoWriter()
 	fmt.Printf("WebBaseDir:[%s]\n", config.DefaultConfig.WebBaseDir)
 }
 

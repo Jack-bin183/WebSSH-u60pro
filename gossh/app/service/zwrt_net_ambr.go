@@ -2,12 +2,14 @@ package service
 
 import (
 	"fmt"
-	"os/exec"
-	"strings"
 	"gossh/gin"
+	"os/exec"
 	"regexp"
 	"strconv"
+	"strings"
 )
+
+var qciValuePattern = regexp.MustCompile(`(?i)(?:qci|5qi)\s*[:=]?\s*(\d+)`)
 
 // 核心 导出函数 (Go 规则:首字母大写 = 可导出(public), 首字母小写只能当前package用)
 func NetAmbrGetHandler(c *gin.Context) {
@@ -42,10 +44,10 @@ func NetAmbrGetHandler(c *gin.Context) {
 				"unit_num": ulUnitNum,
 				"unit_raw": ulUnitRaw,
 			},
-			"qci1": qci1,
-			"qci2": qci2,
-			"raw_ambr":   raw_ambr,
-			"raw_qci":    raw_qci,
+			"qci1":     qci1,
+			"qci2":     qci2,
+			"raw_ambr": raw_ambr,
+			"raw_qci":  raw_qci,
 		},
 	})
 }
@@ -81,28 +83,23 @@ func getLatestQci() (string, error) {
 	cmd := exec.Command("sh", "-c", `grep -hEi "qci|5qi" /data/logfs/key.log 2>/dev/null | tail -n 1`)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		return "", fmt.Errorf("get ambr error: %s", string(out))
+		return "", fmt.Errorf("get qci error: %s", string(out))
 	}
 	return strings.TrimSpace(string(out)), nil
 }
 
 // 2.2 QCI 获取（支持两个值）
 func parseQci(line string) (int, int) {
-	// 👉 找 qci 或 5qi 位置
-	idx := strings.Index(strings.ToLower(line), "qci")
-	if idx == -1 {
-		idx = strings.Index(strings.ToLower(line), "5qi")
-	}
-	if idx == -1 {
+	matches := qciValuePattern.FindAllStringSubmatch(line, 2)
+	if len(matches) == 0 {
 		return 0, 0
 	}
-	sub := line[idx:]
-	// 👉 提取数字
-	nums := extractAllNumbers(sub)
-	if len(nums) >= 2 {
-		return nums[0], nums[1]
+	qci1, _ := strconv.Atoi(matches[0][1])
+	if len(matches) == 1 {
+		return qci1, 0
 	}
-	return 0, 0
+	qci2, _ := strconv.Atoi(matches[1][1])
+	return qci1, qci2
 }
 
 // 数值提取(单位仅取数值)
@@ -144,12 +141,12 @@ func convertToMbps(val int, unit int, unitRaw string) float64 {
 	}
 
 	switch unit {
-		case 3:
-			return float64(val*16) / 1000
-		case 4:
-			return float64(val*64) / 1000
-		case 6:
-			return float64(val)
+	case 3:
+		return float64(val*16) / 1000
+	case 4:
+		return float64(val*64) / 1000
+	case 6:
+		return float64(val)
 	}
 	return 0
 }
@@ -180,12 +177,12 @@ func extractUnitValue(unitRaw string) float64 {
 	val, _ := strconv.ParseFloat(matches[1], 64)
 	unit := matches[2]
 	switch unit {
-		case "Mbps":
-			return val
-		case "Kbps":
-			return val / 1000
-		case "Gbps":
-			return val * 1000
+	case "Mbps":
+		return val
+	case "Kbps":
+		return val / 1000
+	case "Gbps":
+		return val * 1000
 	}
 	return 0
 }
@@ -196,6 +193,7 @@ func extractNumber(s string) int {
 	fmt.Sscanf(s, "%d", &num)
 	return num
 }
+
 // 通用数字提取（增强鲁棒性）
 func extractAllNumbers(s string) []int {
 	var nums []int
