@@ -61,7 +61,7 @@ func TestFormatDevInfo(t *testing.T) {
 		ramUsage:    61,
 		qci:         6,
 	}))
-	want := "48℃\nCPU 50%\nRAM 61%\nQCI 6\n"
+	want := "48°\nCPU 50%\nRAM 61%\nQCI 6\n"
 	if got != want {
 		t.Fatalf("formatDevInfo() = %q; want %q", got, want)
 	}

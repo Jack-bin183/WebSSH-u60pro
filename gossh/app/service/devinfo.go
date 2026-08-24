@@ -303,7 +303,7 @@ func readLatestQCI() (int, error) {
 }
 
 func formatDevInfo(values devInfoValues) []byte {
-	return []byte(fmt.Sprintf("%d℃\nCPU %d%%\nRAM %d%%\nQCI %d\n",
+	return []byte(fmt.Sprintf("%d°\nCPU %d%%\nRAM %d%%\nQCI %d\n",
 		values.temperature,
 		values.cpuUsage,
 		values.ramUsage,
