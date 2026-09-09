@@ -1178,6 +1178,7 @@ func main() {
 
 	{ // Mihomo 透明代理管理
 		auth.GET("/api/mihomo/status", service.MihomoStatusHandler)
+		auth.GET("/api/mihomo/connectivity", service.MihomoConnectivityHandler)
 		auth.GET("/api/mihomo/dir", service.MihomoGetDirHandler)
 		auth.POST("/api/mihomo/control", service.MihomoControlHandler)
 		auth.GET("/api/mihomo/control/stream", service.MihomoControlStreamHandler)

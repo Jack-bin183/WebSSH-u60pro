@@ -107,6 +107,8 @@
             :class="{ active: mmStatus.running }"
             @click="openMmDialog"
           >
+            <span class="mm-connectivity-dot" :class="mmConnectivity"
+              role="status" :aria-label="mmConnectivityLabel" :title="mmConnectivityLabel"></span>
             <span class="quick-action-icon">MH</span>
             <span class="quick-action-copy">
               <span class="quick-action-title">Mihomo</span>
@@ -167,11 +169,28 @@
                 <div class="signal-label-row">
                   <span class="signal-label-help">
                     <span class="label">RSRP</span>
-                    <button
-                      type="button"
-                      class="signal-help-trigger"
-                      :aria-expanded="isSignalHelpOpen('nr', 'rsrp')"
-                      @click="toggleSignalHelp('nr', 'rsrp')">*</button>
+                    <el-popover trigger="click" placement="top" :width="280"
+                      :visible="isSignalHelpOpen('nr', 'rsrp')"
+                      @update:visible="(visible: boolean) => openedSignalHelp = visible ? getSignalHelpKey('nr', 'rsrp') : (isSignalHelpOpen('nr', 'rsrp') ? null : openedSignalHelp)"
+                      popper-style="padding: 0; border: none; background: #0f172a; max-width: calc(100vw - 32px);"
+                      @keydown.esc="openedSignalHelp = null">
+                      <template #reference>
+                        <button type="button" class="signal-help-trigger"
+                          @keydown.esc.stop="openedSignalHelp = null"
+                          aria-label="RSRP 信号说明"
+                          :aria-expanded="isSignalHelpOpen('nr', 'rsrp')">*</button>
+                      </template>
+                <div class="signal-help-panel">
+                  <div class="signal-help-title">{{ signalHelpMap.rsrp.title }}</div>
+                  <div class="signal-help-desc">{{ signalHelpMap.rsrp.description }}</div>
+                  <div class="signal-help-ranges">
+                    <div v-for="item in signalHelpMap.rsrp.ranges" :key="item.label">
+                      <span :class="['signal-help-dot', item.className]"></span>
+                      <span>{{ item.label }}</span>
+                    </div>
+                  </div>
+                </div>
+                    </el-popover>
                   </span>
                   <span :class="['signal-status', getSignalDisplayStatus('nr', 'rsrp', d.nr5g_rsrp).className]">
                     {{ getSignalDisplayStatus('nr', 'rsrp', d.nr5g_rsrp).text }}
@@ -184,26 +203,34 @@
                     :style="{ width: getRsrpPercent(d.nr5g_rsrp) + '%' }"></div>
                   <span class="progress-text">{{ formatDbm(d.nr5g_rsrp) }}</span>
                 </div>
-                <div v-if="isSignalHelpOpen('nr', 'rsrp')" class="signal-help-panel">
-                  <div class="signal-help-title">{{ signalHelpMap.rsrp.title }}</div>
-                  <div class="signal-help-desc">{{ signalHelpMap.rsrp.description }}</div>
-                  <div class="signal-help-ranges">
-                    <div v-for="item in signalHelpMap.rsrp.ranges" :key="item.label">
-                      <span :class="['signal-help-dot', item.className]"></span>
-                      <span>{{ item.label }}</span>
-                    </div>
-                  </div>
-                </div>
+
               </div>
               <div class="signal-item">
                 <div class="signal-label-row">
                   <span class="signal-label-help">
                     <span class="label">RSRQ</span>
-                    <button
-                      type="button"
-                      class="signal-help-trigger"
-                      :aria-expanded="isSignalHelpOpen('nr', 'rsrq')"
-                      @click="toggleSignalHelp('nr', 'rsrq')">*</button>
+                    <el-popover trigger="click" placement="top" :width="280"
+                      :visible="isSignalHelpOpen('nr', 'rsrq')"
+                      @update:visible="(visible: boolean) => openedSignalHelp = visible ? getSignalHelpKey('nr', 'rsrq') : (isSignalHelpOpen('nr', 'rsrq') ? null : openedSignalHelp)"
+                      popper-style="padding: 0; border: none; background: #0f172a; max-width: calc(100vw - 32px);"
+                      @keydown.esc="openedSignalHelp = null">
+                      <template #reference>
+                        <button type="button" class="signal-help-trigger"
+                          @keydown.esc.stop="openedSignalHelp = null"
+                          aria-label="RSRQ 信号说明"
+                          :aria-expanded="isSignalHelpOpen('nr', 'rsrq')">*</button>
+                      </template>
+                <div class="signal-help-panel">
+                  <div class="signal-help-title">{{ signalHelpMap.rsrq.title }}</div>
+                  <div class="signal-help-desc">{{ signalHelpMap.rsrq.description }}</div>
+                  <div class="signal-help-ranges">
+                    <div v-for="item in signalHelpMap.rsrq.ranges" :key="item.label">
+                      <span :class="['signal-help-dot', item.className]"></span>
+                      <span>{{ item.label }}</span>
+                    </div>
+                  </div>
+                </div>
+                    </el-popover>
                   </span>
                   <span :class="['signal-status', getSignalDisplayStatus('nr', 'rsrq', d.nr5g_rsrq).className]">
                     {{ getSignalDisplayStatus('nr', 'rsrq', d.nr5g_rsrq).text }}
@@ -216,26 +243,34 @@
                     :style="{ width: getRsrqPercent(d.nr5g_rsrq) + '%' }"></div>
                   <span class="progress-text">{{ formatDb(d.nr5g_rsrq) }}</span>
                 </div>
-                <div v-if="isSignalHelpOpen('nr', 'rsrq')" class="signal-help-panel">
-                  <div class="signal-help-title">{{ signalHelpMap.rsrq.title }}</div>
-                  <div class="signal-help-desc">{{ signalHelpMap.rsrq.description }}</div>
-                  <div class="signal-help-ranges">
-                    <div v-for="item in signalHelpMap.rsrq.ranges" :key="item.label">
-                      <span :class="['signal-help-dot', item.className]"></span>
-                      <span>{{ item.label }}</span>
-                    </div>
-                  </div>
-                </div>
+
               </div>
               <div class="signal-item">
                 <div class="signal-label-row">
                   <span class="signal-label-help">
                     <span class="label">SINR</span>
-                    <button
-                      type="button"
-                      class="signal-help-trigger"
-                      :aria-expanded="isSignalHelpOpen('nr', 'sinr')"
-                      @click="toggleSignalHelp('nr', 'sinr')">*</button>
+                    <el-popover trigger="click" placement="top" :width="280"
+                      :visible="isSignalHelpOpen('nr', 'sinr')"
+                      @update:visible="(visible: boolean) => openedSignalHelp = visible ? getSignalHelpKey('nr', 'sinr') : (isSignalHelpOpen('nr', 'sinr') ? null : openedSignalHelp)"
+                      popper-style="padding: 0; border: none; background: #0f172a; max-width: calc(100vw - 32px);"
+                      @keydown.esc="openedSignalHelp = null">
+                      <template #reference>
+                        <button type="button" class="signal-help-trigger"
+                          @keydown.esc.stop="openedSignalHelp = null"
+                          aria-label="SINR 信号说明"
+                          :aria-expanded="isSignalHelpOpen('nr', 'sinr')">*</button>
+                      </template>
+                <div class="signal-help-panel">
+                  <div class="signal-help-title">{{ signalHelpMap.sinr.title }}</div>
+                  <div class="signal-help-desc">{{ signalHelpMap.sinr.description }}</div>
+                  <div class="signal-help-ranges">
+                    <div v-for="item in signalHelpMap.sinr.ranges" :key="item.label">
+                      <span :class="['signal-help-dot', item.className]"></span>
+                      <span>{{ item.label }}</span>
+                    </div>
+                  </div>
+                </div>
+                    </el-popover>
                   </span>
                   <span :class="['signal-status', getSignalDisplayStatus('nr', 'sinr', d.nr5g_snr).className]">
                     {{ getSignalDisplayStatus('nr', 'sinr', d.nr5g_snr).text }}
@@ -248,26 +283,34 @@
                     :style="{ width: getSnrPercent(d.nr5g_snr) + '%' }"></div>
                   <span class="progress-text">{{ formatSnr(d.nr5g_snr) }}</span>
                 </div>
-                <div v-if="isSignalHelpOpen('nr', 'sinr')" class="signal-help-panel">
-                  <div class="signal-help-title">{{ signalHelpMap.sinr.title }}</div>
-                  <div class="signal-help-desc">{{ signalHelpMap.sinr.description }}</div>
-                  <div class="signal-help-ranges">
-                    <div v-for="item in signalHelpMap.sinr.ranges" :key="item.label">
-                      <span :class="['signal-help-dot', item.className]"></span>
-                      <span>{{ item.label }}</span>
-                    </div>
-                  </div>
-                </div>
+
               </div>
               <div class="signal-item">
                 <div class="signal-label-row">
                   <span class="signal-label-help">
                     <span class="label">RSSI</span>
-                    <button
-                      type="button"
-                      class="signal-help-trigger"
-                      :aria-expanded="isSignalHelpOpen('nr', 'rssi')"
-                      @click="toggleSignalHelp('nr', 'rssi')">*</button>
+                    <el-popover trigger="click" placement="top" :width="280"
+                      :visible="isSignalHelpOpen('nr', 'rssi')"
+                      @update:visible="(visible: boolean) => openedSignalHelp = visible ? getSignalHelpKey('nr', 'rssi') : (isSignalHelpOpen('nr', 'rssi') ? null : openedSignalHelp)"
+                      popper-style="padding: 0; border: none; background: #0f172a; max-width: calc(100vw - 32px);"
+                      @keydown.esc="openedSignalHelp = null">
+                      <template #reference>
+                        <button type="button" class="signal-help-trigger"
+                          @keydown.esc.stop="openedSignalHelp = null"
+                          aria-label="RSSI 信号说明"
+                          :aria-expanded="isSignalHelpOpen('nr', 'rssi')">*</button>
+                      </template>
+                <div class="signal-help-panel">
+                  <div class="signal-help-title">{{ signalHelpMap.rssi.title }}</div>
+                  <div class="signal-help-desc">{{ signalHelpMap.rssi.description }}</div>
+                  <div class="signal-help-ranges">
+                    <div v-for="item in signalHelpMap.rssi.ranges" :key="item.label">
+                      <span :class="['signal-help-dot', item.className]"></span>
+                      <span>{{ item.label }}</span>
+                    </div>
+                  </div>
+                </div>
+                    </el-popover>
                   </span>
                   <span :class="['signal-status', getSignalDisplayStatus('nr', 'rssi', d.nr5g_rssi).className]">
                     {{ getSignalDisplayStatus('nr', 'rssi', d.nr5g_rssi).text }}
@@ -280,16 +323,7 @@
                     :style="{ width: getRssiPercent(d.nr5g_rssi) + '%' }"></div>
                   <span class="progress-text">{{ formatDbm(d.nr5g_rssi) }}</span>
                 </div>
-                <div v-if="isSignalHelpOpen('nr', 'rssi')" class="signal-help-panel">
-                  <div class="signal-help-title">{{ signalHelpMap.rssi.title }}</div>
-                  <div class="signal-help-desc">{{ signalHelpMap.rssi.description }}</div>
-                  <div class="signal-help-ranges">
-                    <div v-for="item in signalHelpMap.rssi.ranges" :key="item.label">
-                      <span :class="['signal-help-dot', item.className]"></span>
-                      <span>{{ item.label }}</span>
-                    </div>
-                  </div>
-                </div>
+
               </div>
               <div class="signal-item">
                 <span class="label">PCI</span>
@@ -419,11 +453,28 @@
                 <div class="signal-label-row">
                   <span class="signal-label-help">
                     <span class="label">RSRP</span>
-                    <button
-                      type="button"
-                      class="signal-help-trigger"
-                      :aria-expanded="isSignalHelpOpen('lte', 'rsrp')"
-                      @click="toggleSignalHelp('lte', 'rsrp')">*</button>
+                    <el-popover trigger="click" placement="top" :width="280"
+                      :visible="isSignalHelpOpen('lte', 'rsrp')"
+                      @update:visible="(visible: boolean) => openedSignalHelp = visible ? getSignalHelpKey('lte', 'rsrp') : (isSignalHelpOpen('lte', 'rsrp') ? null : openedSignalHelp)"
+                      popper-style="padding: 0; border: none; background: #0f172a; max-width: calc(100vw - 32px);"
+                      @keydown.esc="openedSignalHelp = null">
+                      <template #reference>
+                        <button type="button" class="signal-help-trigger"
+                          @keydown.esc.stop="openedSignalHelp = null"
+                          aria-label="RSRP 信号说明"
+                          :aria-expanded="isSignalHelpOpen('lte', 'rsrp')">*</button>
+                      </template>
+                <div class="signal-help-panel">
+                  <div class="signal-help-title">{{ signalHelpMap.rsrp.title }}</div>
+                  <div class="signal-help-desc">{{ signalHelpMap.rsrp.description }}</div>
+                  <div class="signal-help-ranges">
+                    <div v-for="item in signalHelpMap.rsrp.ranges" :key="item.label">
+                      <span :class="['signal-help-dot', item.className]"></span>
+                      <span>{{ item.label }}</span>
+                    </div>
+                  </div>
+                </div>
+                    </el-popover>
                   </span>
                   <span :class="['signal-status', getSignalDisplayStatus('lte', 'rsrp', d.lte_rsrp).className]">
                     {{ getSignalDisplayStatus('lte', 'rsrp', d.lte_rsrp).text }}
@@ -436,26 +487,34 @@
                     :style="{ width: getRsrpPercent(d.lte_rsrp) + '%' }"></div>
                   <span class="progress-text">{{ formatDbm(d.lte_rsrp) }}</span>
                 </div>
-                <div v-if="isSignalHelpOpen('lte', 'rsrp')" class="signal-help-panel">
-                  <div class="signal-help-title">{{ signalHelpMap.rsrp.title }}</div>
-                  <div class="signal-help-desc">{{ signalHelpMap.rsrp.description }}</div>
-                  <div class="signal-help-ranges">
-                    <div v-for="item in signalHelpMap.rsrp.ranges" :key="item.label">
-                      <span :class="['signal-help-dot', item.className]"></span>
-                      <span>{{ item.label }}</span>
-                    </div>
-                  </div>
-                </div>
+
               </div>
               <div class="signal-item">
                 <div class="signal-label-row">
                   <span class="signal-label-help">
                     <span class="label">RSRQ</span>
-                    <button
-                      type="button"
-                      class="signal-help-trigger"
-                      :aria-expanded="isSignalHelpOpen('lte', 'rsrq')"
-                      @click="toggleSignalHelp('lte', 'rsrq')">*</button>
+                    <el-popover trigger="click" placement="top" :width="280"
+                      :visible="isSignalHelpOpen('lte', 'rsrq')"
+                      @update:visible="(visible: boolean) => openedSignalHelp = visible ? getSignalHelpKey('lte', 'rsrq') : (isSignalHelpOpen('lte', 'rsrq') ? null : openedSignalHelp)"
+                      popper-style="padding: 0; border: none; background: #0f172a; max-width: calc(100vw - 32px);"
+                      @keydown.esc="openedSignalHelp = null">
+                      <template #reference>
+                        <button type="button" class="signal-help-trigger"
+                          @keydown.esc.stop="openedSignalHelp = null"
+                          aria-label="RSRQ 信号说明"
+                          :aria-expanded="isSignalHelpOpen('lte', 'rsrq')">*</button>
+                      </template>
+                <div class="signal-help-panel">
+                  <div class="signal-help-title">{{ signalHelpMap.rsrq.title }}</div>
+                  <div class="signal-help-desc">{{ signalHelpMap.rsrq.description }}</div>
+                  <div class="signal-help-ranges">
+                    <div v-for="item in signalHelpMap.rsrq.ranges" :key="item.label">
+                      <span :class="['signal-help-dot', item.className]"></span>
+                      <span>{{ item.label }}</span>
+                    </div>
+                  </div>
+                </div>
+                    </el-popover>
                   </span>
                   <span :class="['signal-status', getSignalDisplayStatus('lte', 'rsrq', d.lte_rsrq).className]">
                     {{ getSignalDisplayStatus('lte', 'rsrq', d.lte_rsrq).text }}
@@ -468,26 +527,34 @@
                     :style="{ width: getRsrqPercent(d.lte_rsrq) + '%' }"></div>
                   <span class="progress-text">{{ formatDb(d.lte_rsrq) }}</span>
                 </div>
-                <div v-if="isSignalHelpOpen('lte', 'rsrq')" class="signal-help-panel">
-                  <div class="signal-help-title">{{ signalHelpMap.rsrq.title }}</div>
-                  <div class="signal-help-desc">{{ signalHelpMap.rsrq.description }}</div>
-                  <div class="signal-help-ranges">
-                    <div v-for="item in signalHelpMap.rsrq.ranges" :key="item.label">
-                      <span :class="['signal-help-dot', item.className]"></span>
-                      <span>{{ item.label }}</span>
-                    </div>
-                  </div>
-                </div>
+
               </div>
               <div class="signal-item">
                 <div class="signal-label-row">
                   <span class="signal-label-help">
                     <span class="label">SINR</span>
-                    <button
-                      type="button"
-                      class="signal-help-trigger"
-                      :aria-expanded="isSignalHelpOpen('lte', 'sinr')"
-                      @click="toggleSignalHelp('lte', 'sinr')">*</button>
+                    <el-popover trigger="click" placement="top" :width="280"
+                      :visible="isSignalHelpOpen('lte', 'sinr')"
+                      @update:visible="(visible: boolean) => openedSignalHelp = visible ? getSignalHelpKey('lte', 'sinr') : (isSignalHelpOpen('lte', 'sinr') ? null : openedSignalHelp)"
+                      popper-style="padding: 0; border: none; background: #0f172a; max-width: calc(100vw - 32px);"
+                      @keydown.esc="openedSignalHelp = null">
+                      <template #reference>
+                        <button type="button" class="signal-help-trigger"
+                          @keydown.esc.stop="openedSignalHelp = null"
+                          aria-label="SINR 信号说明"
+                          :aria-expanded="isSignalHelpOpen('lte', 'sinr')">*</button>
+                      </template>
+                <div class="signal-help-panel">
+                  <div class="signal-help-title">{{ signalHelpMap.sinr.title }}</div>
+                  <div class="signal-help-desc">{{ signalHelpMap.sinr.description }}</div>
+                  <div class="signal-help-ranges">
+                    <div v-for="item in signalHelpMap.sinr.ranges" :key="item.label">
+                      <span :class="['signal-help-dot', item.className]"></span>
+                      <span>{{ item.label }}</span>
+                    </div>
+                  </div>
+                </div>
+                    </el-popover>
                   </span>
                   <span :class="['signal-status', getSignalDisplayStatus('lte', 'sinr', d.lte_snr).className]">
                     {{ getSignalDisplayStatus('lte', 'sinr', d.lte_snr).text }}
@@ -500,26 +567,34 @@
                     :style="{ width: getSnrPercent(d.lte_snr) + '%' }"></div>
                   <span class="progress-text">{{ formatSnr(d.lte_snr) }}</span>
                 </div>
-                <div v-if="isSignalHelpOpen('lte', 'sinr')" class="signal-help-panel">
-                  <div class="signal-help-title">{{ signalHelpMap.sinr.title }}</div>
-                  <div class="signal-help-desc">{{ signalHelpMap.sinr.description }}</div>
-                  <div class="signal-help-ranges">
-                    <div v-for="item in signalHelpMap.sinr.ranges" :key="item.label">
-                      <span :class="['signal-help-dot', item.className]"></span>
-                      <span>{{ item.label }}</span>
-                    </div>
-                  </div>
-                </div>
+
               </div>
               <div class="signal-item">
                 <div class="signal-label-row">
                   <span class="signal-label-help">
                     <span class="label">RSSI</span>
-                    <button
-                      type="button"
-                      class="signal-help-trigger"
-                      :aria-expanded="isSignalHelpOpen('lte', 'rssi')"
-                      @click="toggleSignalHelp('lte', 'rssi')">*</button>
+                    <el-popover trigger="click" placement="top" :width="280"
+                      :visible="isSignalHelpOpen('lte', 'rssi')"
+                      @update:visible="(visible: boolean) => openedSignalHelp = visible ? getSignalHelpKey('lte', 'rssi') : (isSignalHelpOpen('lte', 'rssi') ? null : openedSignalHelp)"
+                      popper-style="padding: 0; border: none; background: #0f172a; max-width: calc(100vw - 32px);"
+                      @keydown.esc="openedSignalHelp = null">
+                      <template #reference>
+                        <button type="button" class="signal-help-trigger"
+                          @keydown.esc.stop="openedSignalHelp = null"
+                          aria-label="RSSI 信号说明"
+                          :aria-expanded="isSignalHelpOpen('lte', 'rssi')">*</button>
+                      </template>
+                <div class="signal-help-panel">
+                  <div class="signal-help-title">{{ signalHelpMap.rssi.title }}</div>
+                  <div class="signal-help-desc">{{ signalHelpMap.rssi.description }}</div>
+                  <div class="signal-help-ranges">
+                    <div v-for="item in signalHelpMap.rssi.ranges" :key="item.label">
+                      <span :class="['signal-help-dot', item.className]"></span>
+                      <span>{{ item.label }}</span>
+                    </div>
+                  </div>
+                </div>
+                    </el-popover>
                   </span>
                   <span :class="['signal-status', getSignalDisplayStatus('lte', 'rssi', d.lte_rssi).className]">
                     {{ getSignalDisplayStatus('lte', 'rssi', d.lte_rssi).text }}
@@ -532,16 +607,7 @@
                     :style="{ width: getRssiPercent(d.lte_rssi) + '%' }"></div>
                   <span class="progress-text">{{ formatDbm(d.lte_rssi) }}</span>
                 </div>
-                <div v-if="isSignalHelpOpen('lte', 'rssi')" class="signal-help-panel">
-                  <div class="signal-help-title">{{ signalHelpMap.rssi.title }}</div>
-                  <div class="signal-help-desc">{{ signalHelpMap.rssi.description }}</div>
-                  <div class="signal-help-ranges">
-                    <div v-for="item in signalHelpMap.rssi.ranges" :key="item.label">
-                      <span :class="['signal-help-dot', item.className]"></span>
-                      <span>{{ item.label }}</span>
-                    </div>
-                  </div>
-                </div>
+
               </div>
               <div class="signal-item">
                 <span class="label">PCI</span>
@@ -3950,10 +4016,6 @@ function isSignalHelpOpen(type: SignalType, metric: SignalMetric): boolean {
   return openedSignalHelp.value === getSignalHelpKey(type, metric);
 }
 
-function toggleSignalHelp(type: SignalType, metric: SignalMetric) {
-  const key = getSignalHelpKey(type, metric);
-  openedSignalHelp.value = openedSignalHelp.value === key ? null : key;
-}
 
 async function netSelectChange(value: string) {
   networkForm.net_select = value;
@@ -4833,6 +4895,64 @@ function oneClickDebug() {
     })
 }
 
+// Probe only while this homepage is visible; cancel stale requests on leave.
+const mmConnectivity = ref<'unknown' | 'online' | 'offline'>('unknown')
+const mmConnectivityLabel = computed(() => ({
+  unknown: '代理连通性：未检测',
+  online: '代理连通性：Google 可达',
+  offline: '代理连通性：连续两次检测失败（单次超时 3 秒）',
+})[mmConnectivity.value])
+let mmConnectivityTimer: ReturnType<typeof setInterval> | null = null
+let mmConnectivityRequest: AbortController | null = null
+let mmConnectivityFailures = 0
+
+async function probeMmConnectivity() {
+  if (mmConnectivityRequest || document.hidden || !mmEntryUnlocked.value) return
+  const controller = new AbortController()
+  mmConnectivityRequest = controller
+  try {
+    const res = await axios.get('/api/mihomo/connectivity', {
+      // Allow time for the device to return its three-second probe result.
+      signal: controller.signal, timeout: 4000,
+    })
+    if (!controller.signal.aborted) {
+      if (res.data.code !== 0 || typeof res.data.data?.reachable !== 'boolean') {
+        mmConnectivityFailures = 0
+        mmConnectivity.value = 'unknown'
+      } else if (res.data.data.reachable) {
+        mmConnectivityFailures = 0
+        mmConnectivity.value = 'online'
+      } else {
+        mmConnectivityFailures = Math.min(mmConnectivityFailures + 1, 2)
+        if (mmConnectivityFailures >= 2) mmConnectivity.value = 'offline'
+      }
+    }
+  } catch {
+    if (!controller.signal.aborted) {
+      mmConnectivityFailures = 0
+      mmConnectivity.value = 'unknown'
+    }
+  } finally {
+    if (mmConnectivityRequest === controller) mmConnectivityRequest = null
+  }
+}
+
+function stopMmConnectivity() {
+  if (mmConnectivityTimer) clearInterval(mmConnectivityTimer)
+  mmConnectivityTimer = null
+  mmConnectivityRequest?.abort()
+  mmConnectivityRequest = null
+  mmConnectivityFailures = 0
+  mmConnectivity.value = 'unknown'
+}
+
+function syncMmConnectivity() {
+  stopMmConnectivity()
+  if (document.hidden || !mmEntryUnlocked.value) return
+  void probeMmConnectivity()
+  mmConnectivityTimer = setInterval(probeMmConnectivity, 2000)
+}
+
 // ─────────────────────────── Mihomo ───────────────────────────
 
 interface MmFileInfo { name: string; desc: string; exists: boolean; size: number; mod_time: string }
@@ -5694,7 +5814,10 @@ watch(() => serialUpdate.digits, () => {
   serialUpdate.status = '';
 });
 
+watch(mmEntryUnlocked, syncMmConnectivity);
+
 onMounted(() => {
+  document.addEventListener('visibilitychange', syncMmConnectivity);
   initMmEntryState();
   loadSmsForwardStatus();
   loadDevuiStatus();
@@ -5710,6 +5833,8 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
+  document.removeEventListener('visibilitychange', syncMmConnectivity);
+  stopMmConnectivity();
   stopAutoRefresh();
   if (neighborCellRefreshCooldownTimer) {
     clearTimeout(neighborCellRefreshCooldownTimer);
@@ -5740,6 +5865,20 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
+.mm-action-button { position: relative; }
+.mm-connectivity-dot {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #94a3b8;
+  box-shadow: 0 0 0 2px rgba(15, 23, 42, 0.65);
+}
+.mm-connectivity-dot.online { background: #22c55e; }
+.mm-connectivity-dot.offline { background: #ef4444; }
+
 /* 基础样式 */
 .page {
   color: white;
